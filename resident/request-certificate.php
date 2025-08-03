@@ -10,85 +10,99 @@ if (!isset($_SESSION['resident_id']) || !isset($_SESSION['logged_in']) || $_SESS
 
 $resident_id = $_SESSION['resident_id'];
 
-// Get resident information
-$resident_query = "SELECT * FROM residents WHERE id = ?";
-$stmt = mysqli_prepare($connection, $resident_query);
-mysqli_stmt_bind_param($stmt, "i", $resident_id);
-mysqli_stmt_execute($stmt);
-$resident_result = mysqli_stmt_get_result($stmt);
-$resident_info = mysqli_fetch_assoc($resident_result);
-mysqli_stmt_close($stmt);
+// Get dashboard statistics for resident
+$stats = [];
 
-// Handle form submission
+// Count total complaints by resident
+$complaint_query = "SELECT COUNT(*) as total FROM complaints WHERE resident_id = ?";
+$stmt = mysqli_prepare($connection, $complaint_query);
+if ($stmt) {
+    mysqli_stmt_bind_param($stmt, "i", $resident_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $stats['my_complaints'] = mysqli_fetch_assoc($result)['total'];
+    mysqli_stmt_close($stmt);
+} else {
+    $stats['my_complaints'] = 0;
+}
+
+// Count pending complaints by resident
+$pending_complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE resident_id = ? AND status = 'pending'";
+$stmt = mysqli_prepare($connection, $pending_complaint_query);
+if ($stmt) {
+    mysqli_stmt_bind_param($stmt, "i", $resident_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
+    mysqli_stmt_close($stmt);
+} else {
+    $stats['pending_complaints'] = 0;
+}
+
+// Count total certificate requests by resident
+$certificate_query = "SELECT COUNT(*) as total FROM certificate_requests WHERE resident_id = ?";
+$stmt = mysqli_prepare($connection, $certificate_query);
+if ($stmt) {
+    mysqli_stmt_bind_param($stmt, "i", $resident_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $stats['my_certificates'] = mysqli_fetch_assoc($result)['total'];
+    mysqli_stmt_close($stmt);
+} else {
+    $stats['my_certificates'] = 0;
+}
+
+// Count pending certificate requests by resident
+$pending_certificate_query = "SELECT COUNT(*) as pending FROM certificate_requests WHERE resident_id = ? AND status = 'pending'";
+$stmt = mysqli_prepare($connection, $pending_certificate_query);
+if ($stmt) {
+    mysqli_stmt_bind_param($stmt, "i", $resident_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $stats['pending_certificates'] = mysqli_fetch_assoc($result)['pending'];
+    mysqli_stmt_close($stmt);
+} else {
+    $stats['pending_certificates'] = 0;
+}
+
+// Handle certificate request submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
     $certificate_type = mysqli_real_escape_string($connection, $_POST['certificate_type']);
     $purpose = mysqli_real_escape_string($connection, $_POST['purpose']);
-    $delivery_option = mysqli_real_escape_string($connection, $_POST['delivery_option']);
+    $additional_info = mysqli_real_escape_string($connection, $_POST['additional_info']);
     
-    // Insert certificate request
-    $insert_query = "INSERT INTO certificate_requests (resident_id, certificate_type, purpose, delivery_option, status, created_at) 
+    $insert_query = "INSERT INTO certificate_requests (resident_id, certificate_type, purpose, additional_info, status, created_at) 
                      VALUES (?, ?, ?, ?, 'pending', NOW())";
     $stmt = mysqli_prepare($connection, $insert_query);
-    mysqli_stmt_bind_param($stmt, "isss", $resident_id, $certificate_type, $purpose, $delivery_option);
     
-    if (mysqli_stmt_execute($stmt)) {
-        $success_message = "Your certificate request has been submitted successfully!";
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, "isss", $resident_id, $certificate_type, $purpose, $additional_info);
         
-        // Log the request
-        $request_id = mysqli_insert_id($connection);
-        $log_query = "INSERT INTO certificate_request_logs (request_id, action, performed_by, new_status) 
-                      VALUES (?, 'created', ?, 'pending')";
-        $log_stmt = mysqli_prepare($connection, $log_query);
-        mysqli_stmt_bind_param($log_stmt, "ii", $request_id, $resident_id);
-        mysqli_stmt_execute($log_stmt);
-        mysqli_stmt_close($log_stmt);
+        if (mysqli_stmt_execute($stmt)) {
+            mysqli_stmt_close($stmt);
+            header("Location: request-certificate.php?msg=success");
+            exit();
+        } else {
+            $error = "Error submitting request: " . mysqli_stmt_error($stmt);
+            mysqli_stmt_close($stmt);
+        }
     } else {
-        $error_message = "Failed to submit certificate request. Please try again.";
+        $error = "Database error: " . mysqli_error($connection) . ". Please contact the administrator.";
     }
-    mysqli_stmt_close($stmt);
 }
 
-// Get certificate request history
-$history_query = "SELECT cr.*, u.full_name as processed_by_name
-                  FROM certificate_requests cr
-                  LEFT JOIN users u ON cr.processed_by = u.id
-                  WHERE cr.resident_id = ?
-                  ORDER BY cr.created_at DESC";
-$stmt = mysqli_prepare($connection, $history_query);
-mysqli_stmt_bind_param($stmt, "i", $resident_id);
-mysqli_stmt_execute($stmt);
-$request_history = mysqli_stmt_get_result($stmt);
-mysqli_stmt_close($stmt);
-
-// Get statistics for nav badges
-$stats = [];
-$pending_complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE resident_id = ? AND status = 'pending'";
-$stmt = mysqli_prepare($connection, $pending_complaint_query);
-mysqli_stmt_bind_param($stmt, "i", $resident_id);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
-mysqli_stmt_close($stmt);
-
-$pending_cert_query = "SELECT COUNT(*) as pending FROM certificate_requests WHERE resident_id = ? AND status = 'pending'";
-$stmt = mysqli_prepare($connection, $pending_cert_query);
-mysqli_stmt_bind_param($stmt, "i", $resident_id);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$stats['pending_certificates'] = mysqli_fetch_assoc($result)['pending'];
-mysqli_stmt_close($stmt);
-
-// Certificate types available
-$certificate_types = [
-    'Barangay Clearance' => 'General purpose clearance for various legal requirements',
-    'Certificate of Residency' => 'Proof of residence in the barangay',
-    'Certificate of Indigency' => 'For medical assistance and other social services',
-    'Business Clearance' => 'Required for business permit applications',
-    'Building Clearance' => 'Required for building permit applications',
-    'Certificate of Good Moral Character' => 'Character reference for employment or school',
-    'Certificate of Guardianship' => 'Proof of guardianship for minors',
-    'Certificate of Solo Parent' => 'For solo parent benefits and privileges'
-];
+// Get resident's certificate requests
+$requests_query = "SELECT * FROM certificate_requests WHERE resident_id = ? ORDER BY created_at DESC";
+$stmt = mysqli_prepare($connection, $requests_query);
+if ($stmt) {
+    mysqli_stmt_bind_param($stmt, "i", $resident_id);
+    mysqli_stmt_execute($stmt);
+    $my_requests = mysqli_stmt_get_result($stmt);
+    mysqli_stmt_close($stmt);
+} else {
+    // Create empty result if table doesn't exist
+    $my_requests = new mysqli_result();
+}
 ?>
 
 <!DOCTYPE html>
@@ -287,7 +301,6 @@ $certificate_types = [
             padding: 2rem;
         }
 
-        /* Certificate Request Styles */
         .certificate-container {
             background: white;
             border-radius: 12px;
@@ -297,14 +310,13 @@ $certificate_types = [
 
         .certificate-header {
             padding: 1.5rem;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            border-bottom: 1px solid #eee;
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4a 100%);
+            color: #333;
         }
 
         .certificate-title {
             font-size: 1.5rem;
             font-weight: bold;
-            color: #333;
             display: flex;
             align-items: center;
             gap: 0.5rem;
@@ -324,12 +336,11 @@ $certificate_types = [
             border-bottom: 3px solid transparent;
             transition: all 0.3s;
             color: #666;
-            position: relative;
         }
 
         .tab.active {
-            color: #3498db;
-            border-bottom-color: #3498db;
+            color: #4a47a3;
+            border-bottom-color: #4a47a3;
         }
 
         .tab-content {
@@ -363,53 +374,14 @@ $certificate_types = [
 
         .form-control:focus {
             outline: none;
-            border-color: #3498db;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+            border-color: #4a47a3;
+            box-shadow: 0 0 0 3px rgba(74, 71, 163, 0.1);
         }
 
-        select.form-control {
-            cursor: pointer;
-        }
-
-        textarea.form-control {
-            resize: vertical;
-            min-height: 120px;
-        }
-
-        .certificate-types {
+        .form-row {
             display: grid;
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .certificate-type-card {
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            padding: 1rem;
-            cursor: pointer;
-            transition: all 0.3s;
-            background: white;
-        }
-
-        .certificate-type-card:hover {
-            border-color: #3498db;
-            background: #f8f9fa;
-        }
-
-        .certificate-type-card.selected {
-            border-color: #3498db;
-            background: #e3f2fd;
-        }
-
-        .certificate-type-card h4 {
-            margin: 0 0 0.5rem 0;
-            color: #333;
-        }
-
-        .certificate-type-card p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: #666;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
         }
 
         .btn {
@@ -425,19 +397,23 @@ $certificate_types = [
         }
 
         .btn-primary {
-            background: #3498db;
+            background: #4a47a3;
             color: white;
         }
 
         .btn-primary:hover {
-            background: #2980b9;
+            background: #3a3782;
             transform: translateY(-1px);
         }
 
-        .btn-primary:disabled {
-            background: #bdc3c7;
-            cursor: not-allowed;
-            transform: none;
+        .btn-secondary {
+            background: #95a5a6;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #7f8c8d;
+            transform: translateY(-1px);
         }
 
         .alert {
@@ -461,14 +437,58 @@ $certificate_types = [
             border: 1px solid #f5c6cb;
         }
 
-        /* Request History Table */
-        .history-table {
+        .certificate-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .cert-type-card {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .cert-type-card:hover {
+            border-color: #4a47a3;
+            background: #f1f0ff;
+        }
+
+        .cert-type-card.selected {
+            border-color: #4a47a3;
+            background: #f1f0ff;
+        }
+
+        .cert-type-card input[type="radio"] {
+            display: none;
+        }
+
+        .cert-type-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .cert-type-desc {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .requests-table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 1rem;
         }
 
-        .history-table th {
+        .requests-table th {
             background: #f8f9fa;
             padding: 1rem;
             text-align: left;
@@ -477,12 +497,12 @@ $certificate_types = [
             border-bottom: 2px solid #dee2e6;
         }
 
-        .history-table td {
+        .requests-table td {
             padding: 1rem;
             border-bottom: 1px solid #dee2e6;
         }
 
-        .history-table tr:hover {
+        .requests-table tr:hover {
             background: #f8f9fa;
         }
 
@@ -534,28 +554,6 @@ $certificate_types = [
             font-size: 1rem;
         }
 
-        .info-box {
-            background: #e3f2fd;
-            border: 1px solid #90caf9;
-            border-radius: 6px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: start;
-            gap: 0.75rem;
-        }
-
-        .info-box i {
-            color: #1976d2;
-            margin-top: 0.25rem;
-        }
-
-        .info-box p {
-            margin: 0;
-            color: #1565c0;
-            font-size: 0.9rem;
-        }
-
         /* Mobile Responsiveness */
         @media (max-width: 768px) {
             .sidebar {
@@ -578,6 +576,18 @@ $certificate_types = [
                 padding: 1rem;
             }
 
+            .certificate-types {
+                grid-template-columns: 1fr;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .top-bar {
+                padding: 1rem;
+            }
+
             .tabs {
                 flex-wrap: wrap;
                 padding: 0 1rem;
@@ -590,7 +600,7 @@ $certificate_types = [
                 padding: 0.75rem 1rem;
             }
 
-            .history-table {
+            .requests-table {
                 display: block;
                 overflow-x: auto;
                 white-space: nowrap;
@@ -692,148 +702,196 @@ $certificate_types = [
         </div>
 
         <div class="content-area">
-            <?php if (isset($success_message)): ?>
+            <?php if (isset($_GET['msg']) && $_GET['msg'] == 'success'): ?>
                 <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i> <?php echo $success_message; ?>
+                    <i class="fas fa-check-circle"></i>
+                    Your certificate request has been submitted successfully! You will be notified once it's processed.
                 </div>
             <?php endif; ?>
 
-            <?php if (isset($error_message)): ?>
+            <?php if (isset($error)): ?>
                 <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-circle"></i> <?php echo $error_message; ?>
+                    <i class="fas fa-exclamation-circle"></i>
+                    <?php echo $error; ?>
                 </div>
             <?php endif; ?>
 
             <div class="certificate-container">
                 <div class="certificate-header">
                     <h2 class="certificate-title">
-                        <i class="fas fa-certificate" style="color: #3498db;"></i>
-                        Barangay Certificate Request
+                        <i class="fas fa-certificate"></i>
+                        Certificate Request Service
                     </h2>
                 </div>
 
                 <div class="tabs">
-                    <div class="tab active" onclick="switchTab(event, 'new-request')">
+                    <div class="tab active" onclick="switchTab(event, 'request')">
                         <i class="fas fa-plus-circle"></i> New Request
                     </div>
-                    <div class="tab" onclick="switchTab(event, 'request-history')">
-                        <i class="fas fa-history"></i> Request History
+                    <div class="tab" onclick="switchTab(event, 'history')">
+                        <i class="fas fa-history"></i> My Requests
                     </div>
                 </div>
 
                 <!-- New Request Tab -->
-                <div id="new-request-tab" class="tab-content active">
-                    <div class="info-box">
-                        <i class="fas fa-info-circle"></i>
-                        <p>Select the type of certificate you need and provide the required information. Your request will be reviewed by the barangay office.</p>
-                    </div>
-
-                    <form method="POST" id="certificateRequestForm">
+                <div id="request-tab" class="tab-content active">
+                    <form method="POST" action="request-certificate.php">
+                        <h3 style="margin-bottom: 1.5rem; color: #333;">Request a New Certificate</h3>
+                        
                         <div class="form-group">
-                            <label>Select Certificate Type *</label>
+                            <label>Select Certificate Type:</label>
                             <div class="certificate-types">
-                                <?php foreach ($certificate_types as $type => $description): ?>
-                                    <div class="certificate-type-card" onclick="selectCertificateType(this, '<?php echo $type; ?>')">
-                                        <h4><?php echo $type; ?></h4>
-                                        <p><?php echo $description; ?></p>
+                                <div class="cert-type-card" onclick="selectCertType('barangay_clearance')">
+                                    <input type="radio" name="certificate_type" value="Barangay Clearance" id="barangay_clearance">
+                                    <div class="cert-type-title">
+                                        <i class="fas fa-shield-alt" style="color: #4a47a3;"></i>
+                                        Barangay Clearance
                                     </div>
-                                <?php endforeach; ?>
+                                    <div class="cert-type-desc">
+                                        Certifies good moral character and criminal record status. Required for employment, travel, and other legal purposes.
+                                    </div>
+                                </div>
+
+                                <div class="cert-type-card" onclick="selectCertType('certificate_indigency')">
+                                    <input type="radio" name="certificate_type" value="Certificate of Indigency" id="certificate_indigency">
+                                    <div class="cert-type-title">
+                                        <i class="fas fa-hand-holding-heart" style="color: #e74c3c;"></i>
+                                        Certificate of Indigency
+                                    </div>
+                                    <div class="cert-type-desc">
+                                        Certifies low-income status for scholarship applications, medical assistance, and social services.
+                                    </div>
+                                </div>
+
+                                <div class="cert-type-card" onclick="selectCertType('certificate_residency')">
+                                    <input type="radio" name="certificate_type" value="Certificate of Residency" id="certificate_residency">
+                                    <div class="cert-type-title">
+                                        <i class="fas fa-home" style="color: #27ae60;"></i>
+                                        Certificate of Residency
+                                    </div>
+                                    <div class="cert-type-desc">
+                                        Certifies that you are a bonafide resident of the barangay. Required for voter registration and other transactions.
+                                    </div>
+                                </div>
+
+                                <div class="cert-type-card" onclick="selectCertType('business_permit')">
+                                    <input type="radio" name="certificate_type" value="Barangay Business Permit" id="business_permit">
+                                    <div class="cert-type-title">
+                                        <i class="fas fa-store" style="color: #f39c12;"></i>
+                                        Barangay Business Permit
+                                    </div>
+                                    <div class="cert-type-desc">
+                                        Permit to operate a small business within the barangay jurisdiction.
+                                    </div>
+                                </div>
                             </div>
-                            <input type="hidden" name="certificate_type" id="certificate_type" required>
                         </div>
 
                         <div class="form-group">
-                            <label for="purpose">Purpose of Request *</label>
-                            <textarea name="purpose" id="purpose" class="form-control" 
-                                      placeholder="Please specify the purpose of this certificate request (e.g., for employment, school requirements, etc.)" 
-                                      required></textarea>
+                            <label for="purpose">Purpose of Certificate:</label>
+                            <input type="text" id="purpose" name="purpose" class="form-control" 
+                                   placeholder="e.g., Employment requirements, School application, etc." required>
                         </div>
 
                         <div class="form-group">
-                            <label for="delivery_option">Delivery Option *</label>
-                            <select name="delivery_option" id="delivery_option" class="form-control" required>
-                                <option value="">Select delivery option</option>
-                                <option value="pickup">Pick-up at Barangay Office</option>
-                                <option value="delivery">Home Delivery (Additional fee may apply)</option>
-                            </select>
+                            <label for="additional_info">Additional Information (Optional):</label>
+                            <textarea id="additional_info" name="additional_info" class="form-control" rows="4"
+                                      placeholder="Any additional details or special requests..."></textarea>
                         </div>
 
-                        <div class="form-group">
-                            <h4>Your Information</h4>
-                            <div style="background: #f8f9fa; padding: 1rem; border-radius: 6px;">
-                                <p><strong>Name:</strong> <?php echo htmlspecialchars($resident_info['full_name']); ?></p>
-                                <p><strong>Address:</strong> <?php echo htmlspecialchars($resident_info['address']); ?></p>
-                                <p><strong>Contact:</strong> <?php echo htmlspecialchars($resident_info['phone']); ?></p>
-                                <p><strong>Email:</strong> <?php echo htmlspecialchars($resident_info['email']); ?></p>
-                            </div>
+                        <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                            <h4 style="color: #333; margin-bottom: 1rem;">
+                                <i class="fas fa-info-circle" style="color: #3498db;"></i>
+                                Important Information
+                            </h4>
+                            <ul style="color: #666; margin-left: 1.5rem; line-height: 1.8;">
+                                <li>Processing time is typically 3-5 business days</li>
+                                <li>You will be notified via SMS when your certificate is ready</li>
+                                <li>Please bring a valid ID when claiming your certificate</li>
+                                <li>Certificate fees will be collected upon claiming</li>
+                                <li>Certificates are valid for 6 months from date of issuance</li>
+                            </ul>
                         </div>
 
-                        <button type="submit" name="submit_request" class="btn btn-primary" id="submitBtn" disabled>
-                            <i class="fas fa-paper-plane"></i> Submit Certificate Request
+                        <button type="submit" name="submit_request" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i>
+                            Submit Request
                         </button>
                     </form>
                 </div>
 
                 <!-- Request History Tab -->
-                <div id="request-history-tab" class="tab-content">
-                    <h3 style="margin-bottom: 20px;">Your Certificate Request History</h3>
+                <div id="history-tab" class="tab-content">
+                    <h3 style="margin-bottom: 1.5rem; color: #333;">My Certificate Requests</h3>
                     
-                    <?php if (mysqli_num_rows($request_history) > 0): ?>
-                        <table class="history-table">
+                    <?php if ($my_requests && mysqli_num_rows($my_requests) > 0): ?>
+                        <table class="requests-table">
                             <thead>
                                 <tr>
                                     <th>Request Date</th>
                                     <th>Certificate Type</th>
                                     <th>Purpose</th>
                                     <th>Status</th>
-                                    <th>Delivery</th>
-                                    <th>Processed By</th>
+                                    <th>Processed Date</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php while ($request = mysqli_fetch_assoc($request_history)): ?>
+                                <?php while ($request = mysqli_fetch_assoc($my_requests)): ?>
                                     <tr>
                                         <td><?php echo date('M d, Y', strtotime($request['created_at'])); ?></td>
-                                        <td><?php echo htmlspecialchars($request['certificate_type']); ?></td>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($request['certificate_type']); ?></strong>
+                                        </td>
                                         <td><?php echo htmlspecialchars($request['purpose']); ?></td>
                                         <td>
                                             <span class="status-badge status-<?php echo $request['status']; ?>">
-                                                <?php echo ucfirst($request['status']); ?>
+                                                <?php 
+                                                switch($request['status']) {
+                                                    case 'pending':
+                                                        echo '<i class="fas fa-clock"></i> Pending';
+                                                        break;
+                                                    case 'processing':
+                                                        echo '<i class="fas fa-spinner"></i> Processing';
+                                                        break;
+                                                    case 'approved':
+                                                        echo '<i class="fas fa-check"></i> Ready for Pickup';
+                                                        break;
+                                                    case 'claimed':
+                                                        echo '<i class="fas fa-check-circle"></i> Claimed';
+                                                        break;
+                                                    case 'rejected':
+                                                        echo '<i class="fas fa-times"></i> Rejected';
+                                                        break;
+                                                    default:
+                                                        echo ucfirst($request['status']);
+                                                }
+                                                ?>
                                             </span>
+                                            <?php if ($request['status'] == 'rejected' && !empty($request['rejection_reason'])): ?>
+                                                <div style="font-size: 0.8rem; color: #e74c3c; margin-top: 0.25rem;">
+                                                    <i class="fas fa-info-circle"></i> 
+                                                    <?php echo htmlspecialchars($request['rejection_reason']); ?>
+                                                </div>
+                                            <?php endif; ?>
                                         </td>
-                                        <td><?php echo ucfirst($request['delivery_option']); ?></td>
                                         <td>
-                                            <?php if ($request['processed_by_name']): ?>
-                                                <?php echo htmlspecialchars($request['processed_by_name']); ?>
-                                                <br>
-                                                <small><?php echo date('M d, Y', strtotime($request['processed_date'])); ?></small>
+                                            <?php if ($request['processed_date']): ?>
+                                                <?php echo date('M d, Y', strtotime($request['processed_date'])); ?>
                                             <?php else: ?>
-                                                <span style="color: #999;">Pending</span>
+                                                <span style="color: #999;">Not yet processed</span>
                                             <?php endif; ?>
                                         </td>
                                     </tr>
-                                    <?php if ($request['status'] == 'rejected' && $request['rejection_reason']): ?>
-                                        <tr>
-                                            <td colspan="6" style="background: #fff3cd; padding: 0.75rem 1rem;">
-                                                <strong>Rejection Reason:</strong> <?php echo htmlspecialchars($request['rejection_reason']); ?>
-                                            </td>
-                                        </tr>
-                                    <?php endif; ?>
-                                    <?php if ($request['status'] == 'claimed' && $request['or_number']): ?>
-                                        <tr>
-                                            <td colspan="6" style="background: #d4edda; padding: 0.75rem 1rem;">
-                                                <strong>Claimed on:</strong> <?php echo date('M d, Y', strtotime($request['claim_date'])); ?> | 
-                                                <strong>O.R. Number:</strong> <?php echo htmlspecialchars($request['or_number']); ?>
-                                            </td>
-                                        </tr>
-                                    <?php endif; ?>
                                 <?php endwhile; ?>
                             </tbody>
                         </table>
                     <?php else: ?>
                         <div class="empty-state">
                             <i class="fas fa-file-alt"></i>
-                            <p>You haven't made any certificate requests yet.</p>
+                            <p>You haven't submitted any certificate requests yet.</p>
+                            <button onclick="switchToRequestTab()" class="btn btn-primary" style="margin-top: 1rem;">
+                                <i class="fas fa-plus"></i> Make Your First Request
+                            </button>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -842,41 +900,6 @@ $certificate_types = [
     </div>
 
     <script>
-        let selectedCertificateType = null;
-
-        function selectCertificateType(card, type) {
-            // Remove selected class from all cards
-            document.querySelectorAll('.certificate-type-card').forEach(c => {
-                c.classList.remove('selected');
-            });
-            
-            // Add selected class to clicked card
-            card.classList.add('selected');
-            
-            // Set the hidden input value
-            document.getElementById('certificate_type').value = type;
-            selectedCertificateType = type;
-            
-            // Enable submit button if all required fields are filled
-            checkFormValidity();
-        }
-
-        function checkFormValidity() {
-            const purpose = document.getElementById('purpose').value.trim();
-            const deliveryOption = document.getElementById('delivery_option').value;
-            const submitBtn = document.getElementById('submitBtn');
-            
-            if (selectedCertificateType && purpose && deliveryOption) {
-                submitBtn.disabled = false;
-            } else {
-                submitBtn.disabled = true;
-            }
-        }
-
-        // Add event listeners to form fields
-        document.getElementById('purpose').addEventListener('input', checkFormValidity);
-        document.getElementById('delivery_option').addEventListener('change', checkFormValidity);
-
         function switchTab(event, tabName) {
             // Hide all tab contents
             document.querySelectorAll('.tab-content').forEach(content => {
@@ -893,6 +916,24 @@ $certificate_types = [
             
             // Add active class to clicked tab
             event.currentTarget.classList.add('active');
+        }
+
+        function switchToRequestTab() {
+            // Click the request tab
+            document.querySelector('.tab:first-child').click();
+        }
+
+        function selectCertType(certType) {
+            // Remove selected class from all cards
+            document.querySelectorAll('.cert-type-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            
+            // Add selected class to clicked card
+            event.currentTarget.classList.add('selected');
+            
+            // Check the radio button
+            document.getElementById(certType).checked = true;
         }
 
         function toggleSidebar() {
@@ -935,15 +976,6 @@ $certificate_types = [
             if (window.innerWidth > 768) {
                 document.getElementById('sidebar').classList.remove('active');
                 document.getElementById('sidebarOverlay').classList.remove('active');
-            }
-        });
-
-        // Form submission validation
-        document.getElementById('certificateRequestForm').addEventListener('submit', function(e) {
-            if (!selectedCertificateType) {
-                e.preventDefault();
-                alert('Please select a certificate type.');
-                return false;
             }
         });
     </script>

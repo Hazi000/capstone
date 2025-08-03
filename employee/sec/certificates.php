@@ -21,20 +21,30 @@ if (!$settings) {
         'province' => 'Province of Zamboanga Del Sur',
         'country' => 'Republic of the Philippines',
         'captain_name' => 'N/A',
-        'logo_path' => 'assets/images/barangay-logo.png'
+        'logo_path' => '../sec/assets/images/barangay-logo.png'
     ];
 }
 
 // Get statistics for nav badges
 $stats = [];
+
+// Get pending complaints count (with error handling)
 $pending_complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE status = 'pending'";
 $result = mysqli_query($connection, $pending_complaint_query);
-$stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
+if ($result) {
+    $stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
+} else {
+    $stats['pending_complaints'] = 0;
+}
 
-// Get pending certificate requests count
+// Get pending certificate requests count (with error handling)
 $pending_cert_query = "SELECT COUNT(*) as pending FROM certificate_requests WHERE status = 'pending'";
 $result = mysqli_query($connection, $pending_cert_query);
-$stats['pending_certificates'] = mysqli_fetch_assoc($result)['pending'];
+if ($result) {
+    $stats['pending_certificates'] = mysqli_fetch_assoc($result)['pending'];
+} else {
+    $stats['pending_certificates'] = 0;
+}
 
 // Handle certificate request actions
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
@@ -47,12 +57,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
                         processed_date = NOW(),
                         processed_by = {$_SESSION['user_id']}
                         WHERE id = $request_id";
-        mysqli_query($connection, $update_query);
-        
-        // Log the action
-        $log_query = "INSERT INTO certificate_request_logs (request_id, action, performed_by, old_status, new_status) 
-                      VALUES ($request_id, 'approved', {$_SESSION['user_id']}, 'pending', 'approved')";
-        mysqli_query($connection, $log_query);
+        if (mysqli_query($connection, $update_query)) {
+            // Log the action (if table exists)
+            $log_query = "INSERT INTO certificate_request_logs (request_id, action, performed_by, old_status, new_status) 
+                          VALUES ($request_id, 'approved', {$_SESSION['user_id']}, 'pending', 'approved')";
+            mysqli_query($connection, $log_query); // Don't check for errors on log table
+        }
         
         header("Location: certificates.php?tab=requests&msg=approved");
         exit();
@@ -64,12 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
                         processed_by = {$_SESSION['user_id']},
                         rejection_reason = '$reason'
                         WHERE id = $request_id";
-        mysqli_query($connection, $update_query);
-        
-        // Log the action
-        $log_query = "INSERT INTO certificate_request_logs (request_id, action, performed_by, old_status, new_status, remarks) 
-                      VALUES ($request_id, 'rejected', {$_SESSION['user_id']}, 'pending', 'rejected', '$reason')";
-        mysqli_query($connection, $log_query);
+        if (mysqli_query($connection, $update_query)) {
+            // Log the action (if table exists)
+            $log_query = "INSERT INTO certificate_request_logs (request_id, action, performed_by, old_status, new_status, remarks) 
+                          VALUES ($request_id, 'rejected', {$_SESSION['user_id']}, 'pending', 'rejected', '$reason')";
+            mysqli_query($connection, $log_query); // Don't check for errors on log table
+        }
         
         header("Location: certificates.php?tab=requests&msg=rejected");
         exit();
@@ -80,32 +90,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
                         claim_date = NOW(),
                         or_number = '$or_number'
                         WHERE id = $request_id";
-        mysqli_query($connection, $update_query);
-        
-        // Log the action
-        $log_query = "INSERT INTO certificate_request_logs (request_id, action, performed_by, old_status, new_status) 
-                      VALUES ($request_id, 'claimed', {$_SESSION['user_id']}, 'approved', 'claimed')";
-        mysqli_query($connection, $log_query);
+        if (mysqli_query($connection, $update_query)) {
+            // Log the action (if table exists)
+            $log_query = "INSERT INTO certificate_request_logs (request_id, action, performed_by, old_status, new_status) 
+                          VALUES ($request_id, 'claimed', {$_SESSION['user_id']}, 'approved', 'claimed')";
+            mysqli_query($connection, $log_query); // Don't check for errors on log table
+        }
         
         header("Location: certificates.php?tab=requests&msg=claimed");
         exit();
     }
 }
 
-// Get certificate requests with resident information
+// Get certificate requests with resident information (with better error handling)
+$certificate_requests = null;
+
+// First, try the full query with JOIN
 $requests_query = "SELECT cr.*, r.full_name, r.phone, r.email, r.address,
                    cr.certificate_type as certificate_name,
                    u.full_name as processed_by_name
                    FROM certificate_requests cr
-                   JOIN residents r ON cr.resident_id = r.id
+                   LEFT JOIN residents r ON cr.resident_id = r.id
                    LEFT JOIN users u ON cr.processed_by = u.id
                    ORDER BY cr.created_at DESC";
 $certificate_requests = mysqli_query($connection, $requests_query);
 
-// Check for query errors
+// If that fails, try a simpler query without JOIN
 if (!$certificate_requests) {
-    // If the query fails, create an empty result set
-    $certificate_requests = mysqli_query($connection, "SELECT * FROM certificate_requests WHERE 1=0");
+    $requests_query = "SELECT cr.*, cr.certificate_type as certificate_name
+                       FROM certificate_requests cr
+                       ORDER BY cr.created_at DESC";
+    $certificate_requests = mysqli_query($connection, $requests_query);
+}
+
+// If still fails, create empty result
+if (!$certificate_requests) {
+    $certificate_requests = [];
+    $db_error = "Database tables are not properly set up. Please run the SQL setup script first.";
 }
 
 // Handle form submission for certificate generation
@@ -116,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['generate'])) {
     $or_number = mysqli_real_escape_string($connection, $_POST['or_number']);
     $amount_paid = mysqli_real_escape_string($connection, $_POST['amount_paid']);
     
-    // Save certificate record
+    // Save certificate record (if table exists)
     $insert_query = "INSERT INTO certificates (resident_name, age, purpose, or_number, amount_paid, issued_date, issued_by) 
                      VALUES ('$resident_name', '$age', '$purpose', '$or_number', '$amount_paid', NOW(), '{$_SESSION['user_id']}')";
     mysqli_query($connection, $insert_query);
@@ -133,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_settings'])) {
     
     // Handle logo upload
     if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
-        $upload_dir = 'assets/images/';
+        $upload_dir = '../sec/assets/images/';
         if (!file_exists($upload_dir)) {
             mkdir($upload_dir, 0777, true);
         }
@@ -152,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_settings'])) {
     $check_query = "SELECT id FROM certificate_settings WHERE id = 1";
     $check_result = mysqli_query($connection, $check_query);
     
-    if (mysqli_num_rows($check_result) > 0) {
+    if ($check_result && mysqli_num_rows($check_result) > 0) {
         $update_query = "UPDATE certificate_settings SET 
                         barangay_name = '$barangay_name',
                         municipality = '$municipality',
@@ -652,6 +673,12 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             border: 1px solid #ffeaa7;
         }
 
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
         /* Requests Table Styles */
         .requests-table {
             width: 100%;
@@ -863,7 +890,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
-                <div class="user-role">Super Admin</div>
+                <div class="user-role">Secretary</div>
             </div>
         </div>
 
@@ -949,6 +976,13 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
         </div>
 
         <div class="content-area">
+            <?php if (isset($db_error)): ?>
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <?php echo $db_error; ?>
+                </div>
+            <?php endif; ?>
+
             <?php if (isset($_GET['settings']) && $_GET['settings'] == 'updated'): ?>
                 <div class="alert alert-success no-print">
                     <i class="fas fa-check-circle"></i> Certificate settings updated successfully!
@@ -1113,7 +1147,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                 <div id="requests-tab" class="tab-content <?php echo $active_tab == 'requests' ? 'active' : ''; ?>">
                     <h3 style="margin-bottom: 20px;">Certificate Requests from Residents</h3>
                     
-                    <?php if (mysqli_num_rows($certificate_requests) > 0): ?>
+                    <?php if (is_array($certificate_requests) || (is_object($certificate_requests) && mysqli_num_rows($certificate_requests) > 0)): ?>
                         <table class="requests-table">
                             <thead>
                                 <tr>
@@ -1126,12 +1160,15 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php while ($request = mysqli_fetch_assoc($certificate_requests)): ?>
+                                <?php 
+                                if (is_object($certificate_requests)) {
+                                    while ($request = mysqli_fetch_assoc($certificate_requests)): 
+                                ?>
                                     <tr>
                                         <td><?php echo date('M d, Y', strtotime($request['created_at'])); ?></td>
                                         <td>
-                                            <strong><?php echo htmlspecialchars($request['full_name']); ?></strong><br>
-                                            <small><?php echo htmlspecialchars($request['phone']); ?></small>
+                                            <strong><?php echo htmlspecialchars($request['full_name'] ?? 'Resident Name'); ?></strong><br>
+                                            <small><?php echo htmlspecialchars($request['phone'] ?? 'No phone'); ?></small>
                                         </td>
                                         <td><?php echo htmlspecialchars($request['certificate_name']); ?></td>
                                         <td><?php echo htmlspecialchars($request['purpose']); ?></td>
@@ -1143,14 +1180,14 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                         <td>
                                             <div class="action-buttons">
                                                 <?php if ($request['status'] == 'pending'): ?>
-                                                    <button class="btn btn-success btn-sm" onclick="showApproveModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['full_name']); ?>', '<?php echo htmlspecialchars($request['certificate_name']); ?>')">
+                                                    <button class="btn btn-success btn-sm" onclick="showApproveModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['full_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['certificate_name']); ?>')">
                                                         <i class="fas fa-check"></i> Approve
                                                     </button>
                                                     <button class="btn btn-danger btn-sm" onclick="showRejectModal(<?php echo $request['id']; ?>)">
                                                         <i class="fas fa-times"></i> Reject
                                                     </button>
                                                 <?php elseif ($request['status'] == 'approved'): ?>
-                                                    <button class="btn btn-primary btn-sm" onclick="generateCertificate('<?php echo htmlspecialchars($request['full_name']); ?>', '<?php echo htmlspecialchars($request['purpose']); ?>')">
+                                                    <button class="btn btn-primary btn-sm" onclick="generateCertificate('<?php echo htmlspecialchars($request['full_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['purpose']); ?>')">
                                                         <i class="fas fa-print"></i> Generate
                                                     </button>
                                                     <button class="btn btn-success btn-sm" onclick="showClaimModal(<?php echo $request['id']; ?>)">
@@ -1158,23 +1195,31 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                                     </button>
                                                 <?php elseif ($request['status'] == 'claimed'): ?>
                                                     <span style="color: #27ae60;">
-                                                        <i class="fas fa-check-circle"></i> Claimed on <?php echo date('M d, Y', strtotime($request['claim_date'])); ?>
+                                                        <i class="fas fa-check-circle"></i> Claimed on <?php echo $request['claim_date'] ? date('M d, Y', strtotime($request['claim_date'])) : 'N/A'; ?>
                                                     </span>
                                                 <?php elseif ($request['status'] == 'rejected'): ?>
-                                                    <span style="color: #e74c3c;" title="<?php echo htmlspecialchars($request['rejection_reason']); ?>">
+                                                    <span style="color: #e74c3c;" title="<?php echo htmlspecialchars($request['rejection_reason'] ?? ''); ?>">
                                                         <i class="fas fa-times-circle"></i> Rejected
                                                     </span>
                                                 <?php endif; ?>
                                             </div>
                                         </td>
                                     </tr>
-                                <?php endwhile; ?>
+                                <?php 
+                                    endwhile;
+                                } 
+                                ?>
                             </tbody>
                         </table>
                     <?php else: ?>
                         <div style="text-align: center; padding: 3rem;">
                             <i class="fas fa-inbox" style="font-size: 3rem; color: #ddd; margin-bottom: 1rem;"></i>
                             <p style="color: #666;">No certificate requests at this time.</p>
+                            <?php if (isset($db_error)): ?>
+                                <p style="color: #e74c3c; margin-top: 1rem;">
+                                    <small>Please make sure all database tables are created and the resident has submitted requests.</small>
+                                </p>
+                            <?php endif; ?>
                         </div>
                     <?php endif; ?>
                 </div>
