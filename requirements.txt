@@ -1,0 +1,11 @@
+opencv-python==4.8.1.78
+opencv-contrib-python==4.8.1.78
+numpy==1.24.3
+dlib==19.24.2
+imutils==0.5.4
+scipy==1.11.4
+facenet-pytorch==2.5.3
+torch==2.1.0
+torchvision==0.16.0
+mysql-connector-python==8.2.0
+Pillow==10.1.0
