@@ -8,6 +8,44 @@ if (!isset($_SESSION['user_id'])) {
     exit();
 }
 
+// Function to get resident info by ID with multiple fallback methods
+function getResidentInfo($connection, $resident_id) {
+    // Try residents table first with various column name possibilities
+    $queries_to_try = [
+        // Standard query
+        "SELECT id, full_name, phone, email, address, contact_number FROM residents WHERE id = $resident_id",
+        // Alternative column names
+        "SELECT id, CONCAT(first_name, ' ', IFNULL(middle_initial, ''), ' ', last_name) as full_name, contact_number as phone, email, address FROM residents WHERE id = $resident_id",
+        // Just with contact_number field
+        "SELECT id, full_name, contact_number, email, address FROM residents WHERE id = $resident_id",
+        // From users table if residents link to users
+        "SELECT id, full_name, phone, email, address FROM users WHERE id = $resident_id"
+    ];
+    
+    foreach ($queries_to_try as $query) {
+        $result = mysqli_query($connection, $query);
+        if ($result && mysqli_num_rows($result) > 0) {
+            $resident = mysqli_fetch_assoc($result);
+            if ($resident && !empty($resident['full_name'])) {
+                // Ensure phone number is available
+                if (empty($resident['phone']) && !empty($resident['contact_number'])) {
+                    $resident['phone'] = $resident['contact_number'];
+                }
+                return $resident;
+            }
+        }
+    }
+    
+    // If still not found, return default
+    return [
+        'id' => $resident_id,
+        'full_name' => 'Unknown Resident #' . $resident_id,
+        'phone' => 'No contact',
+        'email' => 'No email',
+        'address' => 'No address'
+    ];
+}
+
 // Get certificate settings from database (if exists)
 $settings_query = "SELECT * FROM certificate_settings WHERE id = 1";
 $settings_result = mysqli_query($connection, $settings_query);
@@ -102,31 +140,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Get certificate requests with resident information (with better error handling)
-$certificate_requests = null;
+// Get certificate requests - simple query first, we'll fetch resident info separately
+$certificate_requests_query = "SELECT 
+    cr.*,
+    u.full_name as processed_by_name
+FROM certificate_requests cr
+LEFT JOIN users u ON cr.processed_by = u.id
+ORDER BY cr.created_at DESC";
 
-// First, try the full query with JOIN
-$requests_query = "SELECT cr.*, r.full_name, r.phone, r.email, r.address,
-                   cr.certificate_type as certificate_name,
-                   u.full_name as processed_by_name
-                   FROM certificate_requests cr
-                   LEFT JOIN residents r ON cr.resident_id = r.id
-                   LEFT JOIN users u ON cr.processed_by = u.id
-                   ORDER BY cr.created_at DESC";
-$certificate_requests = mysqli_query($connection, $requests_query);
+$certificate_requests = mysqli_query($connection, $certificate_requests_query);
 
-// If that fails, try a simpler query without JOIN
-if (!$certificate_requests) {
-    $requests_query = "SELECT cr.*, cr.certificate_type as certificate_name
-                       FROM certificate_requests cr
-                       ORDER BY cr.created_at DESC";
-    $certificate_requests = mysqli_query($connection, $requests_query);
-}
-
-// If still fails, create empty result
-if (!$certificate_requests) {
-    $certificate_requests = [];
-    $db_error = "Database tables are not properly set up. Please run the SQL setup script first.";
+// Create an array to store certificate requests with resident info
+$certificate_requests_with_info = [];
+if ($certificate_requests && mysqli_num_rows($certificate_requests) > 0) {
+    while ($request = mysqli_fetch_assoc($certificate_requests)) {
+        // Get resident info for each request
+        $resident_info = getResidentInfo($connection, $request['resident_id']);
+        
+        // Merge the request data with resident info
+        $request['resident_name'] = $resident_info['full_name'];
+        $request['resident_phone'] = $resident_info['phone'];
+        $request['resident_email'] = $resident_info['email'];
+        $request['resident_address'] = $resident_info['address'];
+        
+        $certificate_requests_with_info[] = $request;
+    }
 }
 
 // Handle form submission for certificate generation
@@ -217,7 +255,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             overflow-x: hidden;
         }
 
-        /* Sidebar Styles - Copied from dashboard */
+        /* Sidebar Styles */
         .sidebar {
             position: fixed;
             left: 0;
@@ -392,7 +430,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             padding: 2rem;
         }
 
-        /* Certificate Specific Styles */
+        /* Certificate Container */
         .certificate-container {
             background: white;
             border-radius: 12px;
@@ -458,6 +496,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             display: block;
         }
 
+        /* Form Elements */
         .form-group {
             margin-bottom: 1.5rem;
         }
@@ -490,6 +529,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             gap: 1.5rem;
         }
 
+        /* Buttons */
         .btn {
             padding: 0.75rem 1.5rem;
             border: none;
@@ -547,7 +587,105 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             font-size: 0.85rem;
         }
 
-        /* Certificate Preview Styles */
+        /* Tables */
+        .requests-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .requests-table th {
+            background: #f8f9fa;
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .requests-table td {
+            padding: 1rem;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .requests-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        /* Status badges */
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .status-pending {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-processing {
+            background: #cfe2ff;
+            color: #084298;
+        }
+
+        .status-approved {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .status-rejected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-claimed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        /* Alerts */
+        .alert {
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        /* Certificate Preview */
         .certificate-preview {
             border: 3px double #000;
             padding: 40px;
@@ -623,125 +761,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
             }
         }
 
-        .settings-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .logo-preview {
-            width: 150px;
-            height: 150px;
-            border: 2px dashed #ddd;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-top: 10px;
-            border-radius: 8px;
-            background: #f8f9fa;
-        }
-
-        .logo-preview img {
-            max-width: 100%;
-            max-height: 100%;
-        }
-
-        .alert {
-            padding: 1rem 1.5rem;
-            margin-bottom: 1.5rem;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .alert-info {
-            background: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-
-        .alert-warning {
-            background: #fff3cd;
-            color: #856404;
-            border: 1px solid #ffeaa7;
-        }
-
-        .alert-danger {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        /* Requests Table Styles */
-        .requests-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 1rem;
-        }
-
-        .requests-table th {
-            background: #f8f9fa;
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            color: #333;
-            border-bottom: 2px solid #dee2e6;
-        }
-
-        .requests-table td {
-            padding: 1rem;
-            border-bottom: 1px solid #dee2e6;
-        }
-
-        .requests-table tr:hover {
-            background: #f8f9fa;
-        }
-
-        .status-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.75rem;
-            font-weight: bold;
-        }
-
-        .status-pending {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .status-processing {
-            background: #cfe2ff;
-            color: #084298;
-        }
-
-        .status-approved {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-
-        .status-rejected {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .status-claimed {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-
+        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
@@ -816,6 +836,60 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
         .detail-label {
             font-weight: 600;
             color: #666;
+        }
+
+        /* Settings */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .logo-preview {
+            width: 150px;
+            height: 150px;
+            border: 2px dashed #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 10px;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+
+        .logo-preview img {
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        /* Resident Info Styling */
+        .resident-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .resident-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 0.95rem;
+        }
+
+        .resident-id {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .resident-contact {
+            font-size: 0.85rem;
+            color: #3498db;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .resident-contact i {
+            font-size: 0.75rem;
         }
 
         /* Mobile Responsiveness */
@@ -979,13 +1053,6 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
         </div>
 
         <div class="content-area">
-            <?php if (isset($db_error)): ?>
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <?php echo $db_error; ?>
-                </div>
-            <?php endif; ?>
-
             <?php if (isset($_GET['settings']) && $_GET['settings'] == 'updated'): ?>
                 <div class="alert alert-success no-print">
                     <i class="fas fa-check-circle"></i> Certificate settings updated successfully!
@@ -1150,12 +1217,12 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                 <div id="requests-tab" class="tab-content <?php echo $active_tab == 'requests' ? 'active' : ''; ?>">
                     <h3 style="margin-bottom: 20px;">Certificate Requests from Residents</h3>
                     
-                    <?php if (is_array($certificate_requests) || (is_object($certificate_requests) && mysqli_num_rows($certificate_requests) > 0)): ?>
+                    <?php if (!empty($certificate_requests_with_info)): ?>
                         <table class="requests-table">
                             <thead>
                                 <tr>
                                     <th>Request Date</th>
-                                    <th>Resident Name</th>
+                                    <th>Resident</th>
                                     <th>Certificate Type</th>
                                     <th>Purpose</th>
                                     <th>Status</th>
@@ -1163,17 +1230,19 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php 
-                                if (is_object($certificate_requests)) {
-                                    while ($request = mysqli_fetch_assoc($certificate_requests)): 
-                                ?>
+                                <?php foreach ($certificate_requests_with_info as $request): ?>
                                     <tr>
                                         <td><?php echo date('M d, Y', strtotime($request['created_at'])); ?></td>
                                         <td>
-                                            <strong><?php echo htmlspecialchars($request['full_name'] ?? 'Resident Name'); ?></strong><br>
-                                            <small><?php echo htmlspecialchars($request['phone'] ?? 'No phone'); ?></small>
+                                            <div class="resident-info">
+                                                <div class="resident-name"><?php echo htmlspecialchars($request['resident_name']); ?></div>
+                                                <div class="resident-id">ID: #<?php echo $request['resident_id']; ?></div>
+                                                <div class="resident-contact">
+                                                    <i class="fas fa-phone"></i> <?php echo htmlspecialchars($request['resident_phone']); ?>
+                                                </div>
+                                            </div>
                                         </td>
-                                        <td><?php echo htmlspecialchars($request['certificate_name']); ?></td>
+                                        <td><?php echo htmlspecialchars($request['certificate_type']); ?></td>
                                         <td><?php echo htmlspecialchars($request['purpose']); ?></td>
                                         <td>
                                             <span class="status-badge status-<?php echo $request['status']; ?>">
@@ -1183,14 +1252,14 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                         <td>
                                             <div class="action-buttons">
                                                 <?php if ($request['status'] == 'pending'): ?>
-                                                    <button class="btn btn-success btn-sm" onclick="showApproveModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['full_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['certificate_name']); ?>')">
+                                                    <button class="btn btn-success btn-sm" onclick="showApproveModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['resident_name']); ?>', '<?php echo htmlspecialchars($request['certificate_type']); ?>')">
                                                         <i class="fas fa-check"></i> Approve
                                                     </button>
                                                     <button class="btn btn-danger btn-sm" onclick="showRejectModal(<?php echo $request['id']; ?>)">
                                                         <i class="fas fa-times"></i> Reject
                                                     </button>
                                                 <?php elseif ($request['status'] == 'approved'): ?>
-                                                    <button class="btn btn-primary btn-sm" onclick="generateCertificate('<?php echo htmlspecialchars($request['full_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['purpose']); ?>')">
+                                                    <button class="btn btn-primary btn-sm" onclick="generateCertificate('<?php echo htmlspecialchars($request['resident_name']); ?>', '<?php echo htmlspecialchars($request['purpose']); ?>')">
                                                         <i class="fas fa-print"></i> Generate
                                                     </button>
                                                     <button class="btn btn-success btn-sm" onclick="showClaimModal(<?php echo $request['id']; ?>)">
@@ -1208,21 +1277,16 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                             </div>
                                         </td>
                                     </tr>
-                                <?php 
-                                    endwhile;
-                                } 
-                                ?>
+                                <?php endforeach; ?>
                             </tbody>
                         </table>
                     <?php else: ?>
                         <div style="text-align: center; padding: 3rem;">
                             <i class="fas fa-inbox" style="font-size: 3rem; color: #ddd; margin-bottom: 1rem;"></i>
                             <p style="color: #666;">No certificate requests at this time.</p>
-                            <?php if (isset($db_error)): ?>
-                                <p style="color: #e74c3c; margin-top: 1rem;">
-                                    <small>Please make sure all database tables are created and the resident has submitted requests.</small>
-                                </p>
-                            <?php endif; ?>
+                            <p style="color: #999; margin-top: 1rem;">
+                                <small>Certificate requests from residents will appear here.</small>
+                            </p>
                         </div>
                     <?php endif; ?>
                 </div>
