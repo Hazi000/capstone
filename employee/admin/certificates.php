@@ -18,7 +18,8 @@ function getResidentInfo($connection, $resident_id) {
         "SELECT id, CONCAT(first_name, ' ', IFNULL(middle_initial, ''), ' ', last_name) as full_name, contact_number as phone, email, address FROM residents WHERE id = $resident_id",
         // Just with contact_number field
         "SELECT id, full_name, contact_number, email, address FROM residents WHERE id = $resident_id",
-        // From users table if residents link to users
+        // From users table if residents link to users 
+         
         "SELECT id, full_name, phone, email, address FROM users WHERE id = $resident_id"
     ];
     

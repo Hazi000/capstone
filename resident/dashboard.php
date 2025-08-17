@@ -732,13 +732,7 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
                     <i class="fas fa-bullhorn"></i>
                     Announcements
                 </a>
-                <a href="complaints.php" class="nav-item">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    Complaints
-                    <?php if ($stats['pending_complaints'] > 0): ?>
-                        <span class="nav-badge"><?php echo $stats['pending_complaints']; ?></span>
-                    <?php endif; ?>
-                </a>
+                
                 <a href="request-certificate.php" class="nav-item">
                     <i class="fas fa-certificate"></i>
                     Request Certificate
