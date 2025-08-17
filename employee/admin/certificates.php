@@ -141,11 +141,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Get certificate requests - simple query first, we'll fetch resident info separately
+// Get certificate requests with resident information (join residents table)
 $certificate_requests_query = "SELECT 
     cr.*,
+    r.full_name as resident_name,
+    r.contact_number as resident_phone,
+    r.email as resident_email,
+    '' as resident_address,
     u.full_name as processed_by_name
 FROM certificate_requests cr
+LEFT JOIN residents r ON cr.resident_id = r.id
 LEFT JOIN users u ON cr.processed_by = u.id
 ORDER BY cr.created_at DESC";
 
@@ -155,15 +160,29 @@ $certificate_requests = mysqli_query($connection, $certificate_requests_query);
 $certificate_requests_with_info = [];
 if ($certificate_requests && mysqli_num_rows($certificate_requests) > 0) {
     while ($request = mysqli_fetch_assoc($certificate_requests)) {
-        // Get resident info for each request
-        $resident_info = getResidentInfo($connection, $request['resident_id']);
-        
-        // Merge the request data with resident info
-        $request['resident_name'] = $resident_info['full_name'];
-        $request['resident_phone'] = $resident_info['phone'];
-        $request['resident_email'] = $resident_info['email'];
-        $request['resident_address'] = $resident_info['address'];
-        
+        // If join didn't return resident info, try getResidentInfo as a fallback
+        if (empty($request['resident_name']) || $request['resident_name'] === null) {
+            $resident_info = getResidentInfo($connection, $request['resident_id']);
+            $request['resident_name'] = $resident_info['full_name'] ?? null;
+            $request['resident_phone'] = $resident_info['phone'] ?? ($request['resident_phone'] ?? null);
+            $request['resident_email'] = $resident_info['email'] ?? ($request['resident_email'] ?? null);
+            $request['resident_address'] = $resident_info['address'] ?? ($request['resident_address'] ?? null);
+        }
+
+        // Final safe defaults
+        if (empty($request['resident_name'])) {
+            $request['resident_name'] = 'Resident #' . ($request['resident_id'] ?? 'N/A');
+        }
+        if (empty($request['resident_phone'])) {
+            $request['resident_phone'] = 'No contact';
+        }
+        if (empty($request['resident_email'])) {
+            $request['resident_email'] = 'No email';
+        }
+        if (empty($request['resident_address'])) {
+            $request['resident_address'] = 'No address';
+        }
+
         $certificate_requests_with_info[] = $request;
     }
 }
@@ -231,8 +250,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_settings'])) {
     exit();
 }
 
-// Determine active tab
-$active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
+// Determine active tab. If none specified, default to 'requests' when there are any
+// certificate requests to surface them to the admin; otherwise default to 'generate'.
+if (isset($_GET['tab'])) {
+    $active_tab = $_GET['tab'];
+} else {
+    $active_tab = !empty($certificate_requests_with_info) ? 'requests' : 'generate';
+}
 ?>
 
 <!DOCTYPE html>

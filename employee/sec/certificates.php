@@ -2,6 +2,39 @@
 session_start();
 require_once '../../config.php';
 
+// Helper: get resident info by ID with multiple fallback queries
+function getResidentInfo($connection, $resident_id) {
+    $resident_id = intval($resident_id);
+    $queries_to_try = [
+        "SELECT id, full_name, contact_number as phone, email, '' as address FROM residents WHERE id = $resident_id",
+        "SELECT id, CONCAT(first_name, ' ', IFNULL(middle_initial, ''), ' ', last_name) as full_name, contact_number as phone, email, '' as address FROM residents WHERE id = $resident_id",
+        "SELECT id, full_name, contact_number, email, '' as address FROM residents WHERE id = $resident_id",
+        // fallback to users table if resident data stored there
+        "SELECT id, full_name, phone, email, '' as address FROM users WHERE id = $resident_id"
+    ];
+
+    foreach ($queries_to_try as $q) {
+        $res = mysqli_query($connection, $q);
+        if ($res && mysqli_num_rows($res) > 0) {
+            $row = mysqli_fetch_assoc($res);
+            if (!empty($row['full_name'])) {
+                if (empty($row['phone']) && !empty($row['contact_number'])) {
+                    $row['phone'] = $row['contact_number'];
+                }
+                return $row;
+            }
+        }
+    }
+
+    return [
+        'id' => $resident_id,
+        'full_name' => 'Unknown Resident #' . $resident_id,
+        'phone' => 'No contact',
+        'email' => 'No email',
+        'address' => 'No address'
+    ];
+}
+
 // Check if user is logged in
 if (!isset($_SESSION['user_id'])) {
     header("Location: ../login.php");
@@ -106,7 +139,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
 $certificate_requests = null;
 
 // First, try the full query with JOIN
-$requests_query = "SELECT cr.*, r.full_name, r.phone, r.email, r.address,
+// Use a LEFT JOIN to fetch resident info but avoid selecting non-existent columns like r.address
+$requests_query = "SELECT cr.*, r.full_name as resident_name, r.contact_number AS resident_phone, r.email as resident_email,
                    cr.certificate_type as certificate_name,
                    u.full_name as processed_by_name
                    FROM certificate_requests cr
@@ -115,18 +149,43 @@ $requests_query = "SELECT cr.*, r.full_name, r.phone, r.email, r.address,
                    ORDER BY cr.created_at DESC";
 $certificate_requests = mysqli_query($connection, $requests_query);
 
-// If that fails, try a simpler query without JOIN
+// Fallback: if query failed, attempt a simpler query
 if (!$certificate_requests) {
-    $requests_query = "SELECT cr.*, cr.certificate_type as certificate_name
-                       FROM certificate_requests cr
-                       ORDER BY cr.created_at DESC";
+    $requests_query = "SELECT cr.*, cr.certificate_type as certificate_name FROM certificate_requests cr ORDER BY cr.created_at DESC";
     $certificate_requests = mysqli_query($connection, $requests_query);
 }
 
-// If still fails, create empty result
+// If still false, set to empty array and flag error
 if (!$certificate_requests) {
     $certificate_requests = [];
     $db_error = "Database tables are not properly set up. Please run the SQL setup script first.";
+}
+
+// Build array with resident info and safe fallbacks
+$certificate_requests_with_info = [];
+if ($certificate_requests && is_object($certificate_requests) && mysqli_num_rows($certificate_requests) > 0) {
+    while ($req = mysqli_fetch_assoc($certificate_requests)) {
+        // if join didn't give a resident name, try the helper
+        if (empty($req['resident_name'])) {
+            $resinfo = getResidentInfo($connection, $req['resident_id'] ?? 0);
+            $req['resident_name'] = $resinfo['full_name'] ?? null;
+            $req['resident_phone'] = $resinfo['phone'] ?? ($req['resident_phone'] ?? null);
+            $req['resident_email'] = $resinfo['email'] ?? ($req['resident_email'] ?? null);
+        }
+
+        // final defaults
+        if (empty($req['resident_name'])) {
+            $req['resident_name'] = 'Resident #' . ($req['resident_id'] ?? 'N/A');
+        }
+        if (empty($req['resident_phone'])) {
+            $req['resident_phone'] = 'No contact';
+        }
+        if (empty($req['resident_email'])) {
+            $req['resident_email'] = 'No email';
+        }
+
+        $certificate_requests_with_info[] = $req;
+    }
 }
 
 // Handle form submission for certificate generation
@@ -192,8 +251,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_settings'])) {
     exit();
 }
 
-// Determine active tab
-$active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
+// Determine active tab. Default to 'requests' when there are requests to show.
+if (isset($_GET['tab'])) {
+    $active_tab = $_GET['tab'];
+} else {
+    $active_tab = !empty($certificate_requests_with_info) ? 'requests' : 'generate';
+}
 ?>
 
 <!DOCTYPE html>
@@ -1147,7 +1210,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                 <div id="requests-tab" class="tab-content <?php echo $active_tab == 'requests' ? 'active' : ''; ?>">
                     <h3 style="margin-bottom: 20px;">Certificate Requests from Residents</h3>
                     
-                    <?php if (is_array($certificate_requests) || (is_object($certificate_requests) && mysqli_num_rows($certificate_requests) > 0)): ?>
+                    <?php if (!empty($certificate_requests_with_info)): ?>
                         <table class="requests-table">
                             <thead>
                                 <tr>
@@ -1160,15 +1223,12 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                 </tr>
                             </thead>
                             <tbody>
-                                <?php 
-                                if (is_object($certificate_requests)) {
-                                    while ($request = mysqli_fetch_assoc($certificate_requests)): 
-                                ?>
+                                <?php foreach ($certificate_requests_with_info as $request): ?>
                                     <tr>
                                         <td><?php echo date('M d, Y', strtotime($request['created_at'])); ?></td>
                                         <td>
-                                            <strong><?php echo htmlspecialchars($request['full_name'] ?? 'Resident Name'); ?></strong><br>
-                                            <small><?php echo htmlspecialchars($request['phone'] ?? 'No phone'); ?></small>
+                                            <strong><?php echo htmlspecialchars($request['resident_name'] ?? 'Resident Name'); ?></strong><br>
+                                            <small><?php echo htmlspecialchars($request['resident_phone'] ?? 'No phone'); ?></small>
                                         </td>
                                         <td><?php echo htmlspecialchars($request['certificate_name']); ?></td>
                                         <td><?php echo htmlspecialchars($request['purpose']); ?></td>
@@ -1180,14 +1240,14 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                         <td>
                                             <div class="action-buttons">
                                                 <?php if ($request['status'] == 'pending'): ?>
-                                                    <button class="btn btn-success btn-sm" onclick="showApproveModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['full_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['certificate_name']); ?>')">
+                                                    <button class="btn btn-success btn-sm" onclick="showApproveModal(<?php echo $request['id']; ?>, '<?php echo htmlspecialchars($request['resident_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['certificate_name']); ?>')">
                                                         <i class="fas fa-check"></i> Approve
                                                     </button>
                                                     <button class="btn btn-danger btn-sm" onclick="showRejectModal(<?php echo $request['id']; ?>)">
                                                         <i class="fas fa-times"></i> Reject
                                                     </button>
                                                 <?php elseif ($request['status'] == 'approved'): ?>
-                                                    <button class="btn btn-primary btn-sm" onclick="generateCertificate('<?php echo htmlspecialchars($request['full_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['purpose']); ?>')">
+                                                    <button class="btn btn-primary btn-sm" onclick="generateCertificate('<?php echo htmlspecialchars($request['resident_name'] ?? 'Resident'); ?>', '<?php echo htmlspecialchars($request['purpose']); ?>')">
                                                         <i class="fas fa-print"></i> Generate
                                                     </button>
                                                     <button class="btn btn-success btn-sm" onclick="showClaimModal(<?php echo $request['id']; ?>)">
@@ -1205,10 +1265,7 @@ $active_tab = isset($_GET['tab']) ? $_GET['tab'] : 'generate';
                                             </div>
                                         </td>
                                     </tr>
-                                <?php 
-                                    endwhile;
-                                } 
-                                ?>
+                                <?php endforeach; ?>
                             </tbody>
                         </table>
                     <?php else: ?>

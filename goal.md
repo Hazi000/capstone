@@ -16,7 +16,7 @@ suggestion
 [x]-add attributes for resident(face recognition)
 [x]-fix calendar dashboard design
 [x]-create sign in form for users employee
-[] - facenet model face recognition using python
+
 [] - enhance announcement
 
 

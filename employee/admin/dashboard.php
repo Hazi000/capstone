@@ -70,6 +70,45 @@ WHERE (an.event_date IS NOT NULL AND an.event_date >= CURDATE() AND an.event_dat
 AND an.status = 'active'";
 
 $calendar_events = mysqli_query($connection, $calendar_events_query);
+
+// Build reusable arrays for recent items so we can render them and expose to JS
+$recent_complaints_data = [];
+if ($recent_complaints && mysqli_num_rows($recent_complaints) > 0) {
+    mysqli_data_seek($recent_complaints, 0);
+    while ($row = mysqli_fetch_assoc($recent_complaints)) {
+        $recent_complaints_data[] = $row;
+    }
+}
+
+$recent_announcements_data = [];
+if ($recent_announcements && mysqli_num_rows($recent_announcements) > 0) {
+    mysqli_data_seek($recent_announcements, 0);
+    while ($row = mysqli_fetch_assoc($recent_announcements)) {
+        $recent_announcements_data[] = $row;
+    }
+}
+
+// Recent appointments
+$recent_appointments_query = "SELECT a.*, r.full_name FROM appointments a LEFT JOIN residents r ON a.resident_id = r.id ORDER BY a.created_at DESC LIMIT 5";
+$recent_appointments = mysqli_query($connection, $recent_appointments_query);
+$recent_appointments_data = [];
+if ($recent_appointments && mysqli_num_rows($recent_appointments) > 0) {
+    mysqli_data_seek($recent_appointments, 0);
+    while ($row = mysqli_fetch_assoc($recent_appointments)) {
+        $recent_appointments_data[] = $row;
+    }
+}
+
+// Recent residents (newly registered)
+$recent_residents_query = "SELECT id, full_name, created_at FROM residents ORDER BY created_at DESC LIMIT 5";
+$recent_residents = mysqli_query($connection, $recent_residents_query);
+$recent_residents_data = [];
+if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
+    mysqli_data_seek($recent_residents, 0);
+    while ($row = mysqli_fetch_assoc($recent_residents)) {
+        $recent_residents_data[] = $row;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -909,8 +948,8 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                                 </h3>
                             </div>
                             <div class="recent-list">
-                                <?php if (mysqli_num_rows($recent_complaints) > 0): ?>
-                                    <?php while ($complaint = mysqli_fetch_assoc($recent_complaints)): ?>
+                                <?php if (!empty($recent_complaints_data)): ?>
+                                    <?php foreach ($recent_complaints_data as $complaint): ?>
                                         <div class="recent-item">
                                             <div class="recent-info">
                                                 <h4><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></h4>
@@ -920,7 +959,7 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                                                 <?php echo ucfirst($complaint['status']); ?>
                                             </span>
                                         </div>
-                                    <?php endwhile; ?>
+                                    <?php endforeach; ?>
                                 <?php else: ?>
                                     <div class="recent-item">
                                         <div class="recent-info">
@@ -939,8 +978,8 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                                 </h3>
                             </div>
                             <div class="recent-list">
-                                <?php if (mysqli_num_rows($recent_announcements) > 0): ?>
-                                    <?php while ($announcement = mysqli_fetch_assoc($recent_announcements)): ?>
+                                <?php if (!empty($recent_announcements_data)): ?>
+                                    <?php foreach ($recent_announcements_data as $announcement): ?>
                                         <div class="recent-item">
                                             <div class="recent-info">
                                                 <h4><?php echo htmlspecialchars($announcement['title']); ?></h4>
@@ -950,7 +989,7 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                                                 <?php echo ucfirst($announcement['priority']); ?>
                                             </span>
                                         </div>
-                                    <?php endwhile; ?>
+                                    <?php endforeach; ?>
                                 <?php else: ?>
                                     <div class="recent-item">
                                         <div class="recent-info">
@@ -960,6 +999,17 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                                 <?php endif; ?>
                             </div>
                         </div>
+                    </div>
+                    
+                    <!-- Dashboard detail panel (dashboard within dashboard) -->
+                    <div id="dashboardDetail" class="recent-card" style="display:none; margin-top:1.5rem;">
+                        <div class="recent-header">
+                            <h3 class="recent-title" id="detailTitle">
+                                Details
+                            </h3>
+                            <button id="closeDetail" style="float:right; margin-top:-36px; background:#e74c3c; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer;">Close</button>
+                        </div>
+                        <div class="recent-list" id="detailList" style="padding:1rem; max-height:360px; overflow:auto;"></div>
                     </div>
                 </div>
 
@@ -1146,7 +1196,13 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
             }
         }
 
-        // Initialize calendar on page load
+        // Data exported from PHP
+        const recentComplaints = <?php echo json_encode($recent_complaints_data ?? []); ?>;
+        const recentAnnouncements = <?php echo json_encode($recent_announcements_data ?? []); ?>;
+        const recentAppointments = <?php echo json_encode($recent_appointments_data ?? []); ?>;
+        const recentResidents = <?php echo json_encode($recent_residents_data ?? []); ?>;
+
+        // Initialize calendar on page load and wire up dashboard interactions
         document.addEventListener('DOMContentLoaded', function() {
             renderCalendar();
             
@@ -1159,7 +1215,79 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                     item.classList.add('active');
                 }
             });
+
+            // Wire stat cards to open dashboard detail
+            document.querySelectorAll('.stat-card').forEach((card, idx) => {
+                card.style.cursor = 'pointer';
+                card.addEventListener('click', function() {
+                    let title = '';
+                    let list = [];
+                    if (idx === 0) { // Pending Complaints
+                        title = 'Pending Complaints';
+                        list = recentComplaints.filter(c => c.status === 'pending');
+                    } else if (idx === 1) { // Pending Appointments
+                        title = 'Pending Appointments';
+                        list = recentAppointments.filter(a => a.status === 'pending');
+                    } else if (idx === 2) { // Recent Residents
+                        title = 'Recent Residents';
+                        list = recentResidents;
+                    } else { // Total Records / fallback
+                        title = 'Recent Announcements';
+                        list = recentAnnouncements;
+                    }
+
+                    showDetailPanel(title, list);
+                });
+            });
+
+            document.getElementById('closeDetail').addEventListener('click', function() {
+                document.getElementById('dashboardDetail').style.display = 'none';
+            });
         });
+
+        function showDetailPanel(title, items) {
+            document.getElementById('detailTitle').textContent = title;
+            const container = document.getElementById('detailList');
+            container.innerHTML = '';
+            if (!items || items.length === 0) {
+                container.innerHTML = '<p style="text-align:center;color:#666;padding:1rem;">No items to show</p>';
+            } else {
+                items.forEach(it => {
+                    const div = document.createElement('div');
+                    div.className = 'recent-item';
+                    let inner = '<div class="recent-info">';
+                    if (it.nature_of_complaint) {
+                        inner += '<h4>' + escapeHtml(it.nature_of_complaint) + '</h4>';
+                        inner += '<p>by ' + escapeHtml(it.full_name || 'Unknown') + ' • ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
+                    } else if (it.title) {
+                        inner += '<h4>' + escapeHtml(it.title) + '</h4>';
+                        inner += '<p>by ' + escapeHtml(it.created_by_name || it.created_by || 'Unknown') + ' • ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
+                    } else if (it.event_time || it.status) {
+                        inner += '<h4>' + escapeHtml(it.purpose || it.title || 'Appointment') + '</h4>';
+                        inner += '<p>with ' + escapeHtml(it.full_name || it.resident_name || 'Unknown') + ' • ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
+                    } else if (it.full_name) {
+                        inner += '<h4>' + escapeHtml(it.full_name) + '</h4>';
+                        inner += '<p>Joined ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
+                    } else {
+                        inner += '<h4>Item</h4>';
+                        inner += '<p>Details unavailable</p>';
+                    }
+                    inner += '</div>';
+                    div.innerHTML = inner;
+                    container.appendChild(div);
+                });
+            }
+            document.getElementById('dashboardDetail').style.display = 'block';
+            document.getElementById('dashboardDetail').scrollIntoView({behavior:'smooth'});
+        }
+
+        function escapeHtml(unsafe) {
+            if (!unsafe) return '';
+            return String(unsafe).replace(/[&<>"]+/g, function(match) {
+                const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+                return map[match] || match;
+            });
+        }
 
         // Close sidebar when clicking on overlay
         document.getElementById('sidebarOverlay').addEventListener('click', function() {
