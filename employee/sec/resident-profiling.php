@@ -1753,52 +1753,68 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
         let faceDetected = false;
         let isCapturing = false;
 
-        // Load face-api models
+        // Load face-api models (try local first so it can work offline, then fallback to CDN)
         async function loadModels() {
-            try {
-                document.getElementById('loadingOverlay').classList.add('show');
-                console.log('Starting to load models...');
-                
-                // Use the correct model URLs for face-api.js@0.22.2
-                const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights/';
-                
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const LOCAL_MODEL_URL = './models/'; // place model weights in this folder (relative to this PHP file)
+            const CDN_MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights/';
+            const ALT_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights/';
+
+            async function tryLoad(url) {
+                console.log('Attempting to load models from', url);
+                // load minimal set first (tiny detector + recognition + landmarks + expressions)
                 await Promise.all([
-                    faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-                    faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
-                    faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL)
+                    faceapi.nets.tinyFaceDetector.loadFromUri(url),
+                    faceapi.nets.faceLandmark68Net.loadFromUri(url),
+                    faceapi.nets.faceRecognitionNet.loadFromUri(url),
+                    faceapi.nets.faceExpressionNet.loadFromUri(url)
                 ]);
-                
-                modelsLoaded = true;
-                document.getElementById('loadingOverlay').classList.remove('show');
-                console.log('All models loaded successfully');
-            } catch (error) {
-                console.error('Error loading models:', error);
-                document.getElementById('loadingOverlay').classList.remove('show');
-                
-                // Try alternative CDN
+                // ssdMobilenet is optional / fallback for detection accuracy
                 try {
-                    console.log('Trying alternative model source...');
-                    document.getElementById('loadingOverlay').classList.add('show');
-                    
-                    const ALT_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights/';
-                    
-                    await Promise.all([
-                        faceapi.nets.tinyFaceDetector.loadFromUri(ALT_MODEL_URL),
-                        faceapi.nets.faceLandmark68Net.loadFromUri(ALT_MODEL_URL),
-                        faceapi.nets.faceRecognitionNet.loadFromUri(ALT_MODEL_URL),
-                        faceapi.nets.faceExpressionNet.loadFromUri(ALT_MODEL_URL)
-                    ]);
-                    
-                    modelsLoaded = true;
-                    document.getElementById('loadingOverlay').classList.remove('show');
-                    console.log('Alternative models loaded successfully');
-                } catch (altError) {
-                    console.error('Alternative model loading also failed:', altError);
-                    document.getElementById('loadingOverlay').classList.remove('show');
-                    alert('Failed to load face recognition models. Please refresh the page and try again.');
+                    await faceapi.nets.ssdMobilenetv1.loadFromUri(url);
+                } catch (e) {
+                    console.warn('ssdMobilenetv1 not loaded from', url, e);
                 }
+            }
+
+            loadingOverlay.classList.add('show');
+            console.log('Starting to load models...');
+
+            // Try local models first (no internet required if files present)
+            try {
+                await tryLoad(LOCAL_MODEL_URL);
+                modelsLoaded = true;
+                loadingOverlay.classList.remove('show');
+                console.log('Models loaded from local folder:', LOCAL_MODEL_URL);
+                return;
+            } catch (localErr) {
+                console.warn('Local models not found or failed to load:', localErr);
+            }
+
+            // If local failed, try CDN
+            try {
+                await tryLoad(CDN_MODEL_URL);
+                modelsLoaded = true;
+                loadingOverlay.classList.remove('show');
+                console.log('Models loaded from CDN:', CDN_MODEL_URL);
+                return;
+            } catch (cdnErr) {
+                console.warn('CDN model loading failed:', cdnErr);
+            }
+
+            // Try alternative CDN
+            try {
+                await tryLoad(ALT_MODEL_URL);
+                modelsLoaded = true;
+                loadingOverlay.classList.remove('show');
+                console.log('Models loaded from alternative CDN:', ALT_MODEL_URL);
+                return;
+            } catch (altErr) {
+                console.error('All model loading attempts failed:', altErr);
+                loadingOverlay.classList.remove('show');
+                // Show a clear message to the user
+                const errMsg = 'Failed to load face recognition models. If you are offline, download the model files and place them in the folder: ./employee/sec/models/ (relative to the PHP file).';
+                alert(errMsg);
             }
         }
 

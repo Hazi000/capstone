@@ -62,6 +62,7 @@ $events_query = "SELECT
     a.location,
     a.status,
     a.priority,
+    a.needs_volunteers,
     u.full_name as created_by_name,
     COUNT(cv.id) as volunteer_count,
     a.max_volunteers
@@ -590,51 +591,96 @@ if (empty($events)) {
                                         <div class="month"><?php echo date('M', $d); ?></div>
                                     </div>
                                     <div class="event-info">
-                                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                            <h3><?php echo htmlspecialchars($ev['title']); ?></h3>
-                                            <?php
-                            $priorityClass = '';
-                            $priorityText = '';
-                            switch($ev['priority']) {
-                                case 'high':
-                                    $priorityClass = 'priority-high';
-                                    $priorityText = 'Important';
-                                    break;
-                                case 'medium':
-                                    $priorityClass = 'priority-medium';
-                                    $priorityText = 'Medium Priority';
-                                    break;
-                                case 'low':
-                                    $priorityClass = 'priority-low';
-                                    $priorityText = 'Low Priority';
-                                    break;
-                            }
-                            if (!empty($priorityClass)): ?>
-                                <span class="priority-badge <?php echo $priorityClass; ?>">
-                                    <i class="fas fa-exclamation-circle"></i> <?php echo $priorityText; ?>
-                                </span>
+                                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                                            <div style="flex: 1;">
+                                                <h3><?php echo htmlspecialchars($ev['title']); ?></h3>
+                                                <?php
+                                $priorityClass = '';
+                                $priorityText = '';
+                                switch($ev['priority']) {
+                                    case 'high':
+                                        $priorityClass = 'priority-high';
+                                        $priorityText = 'Important';
+                                        break;
+                                    case 'medium':
+                                        $priorityClass = 'priority-medium';
+                                        $priorityText = 'Medium Priority';
+                                        break;
+                                    case 'low':
+                                        $priorityClass = 'priority-low';
+                                        $priorityText = 'Low Priority';
+                                        break;
+                                }
+                                if (!empty($priorityClass)): ?>
+                                    <span class="priority-badge <?php echo $priorityClass; ?>">
+                                        <i class="fas fa-exclamation-circle"></i> <?php echo $priorityText; ?>
+                                    </span>
+                                <?php endif; ?>
+
+                                <div class="event-meta" style="margin-top: 0.5rem;">
+                                    <?php if (!empty($ev['event_time'])): ?>
+                                        <span><i class="far fa-clock"></i> <?php echo htmlspecialchars($ev['event_time']); ?></span>
+                                    <?php endif; ?>
+                                    <?php if (!empty($ev['location'])): ?>
+                                        <span><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($ev['location']); ?></span>
+                                    <?php endif; ?>
+                                    <span><i class="fas fa-user"></i> <?php echo htmlspecialchars($ev['created_by_name'] ?? 'Admin'); ?></span>
+                                    
+                                    <?php if ($ev['needs_volunteers']): ?>
+                                        <?php if (!empty($ev['max_volunteers'])): ?>
+                                            <span class="volunteer-count">
+                                                <i class="fas fa-users"></i>
+                                                Volunteers: <?php echo $ev['volunteer_count']; ?>/<?php echo $ev['max_volunteers']; ?>
+                                            </span>
+                                        <?php else: ?>
+                                            <span class="volunteer-count">
+                                                <i class="fas fa-users"></i>
+                                                Volunteers: <?php echo $ev['volunteer_count']; ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+
+                            <?php if ($ev['needs_volunteers']): ?>
+                            <div style="display: flex; align-items: center;">
+                            <?php
+                                $is_upcoming = strtotime($ev['event_date']) >= strtotime(date('Y-m-d'));
+                                $is_full = !empty($ev['max_volunteers']) && intval($ev['volunteer_count']) >= intval($ev['max_volunteers']);
+                                $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
+
+                                if ($is_upcoming):
+                                    if ($is_logged_in): ?>
+                                        <?php if (!$is_full): ?>
+                                            <form method="POST">
+                                                <input type="hidden" name="action" value="volunteer_signup">
+                                                <input type="hidden" name="announcement_id" value="<?php echo intval($ev['id']); ?>">
+                                                <button type="submit" onclick="return confirm('Would you like to volunteer for this event?');" 
+                                                    class="btn-volunteer" 
+                                                    style="background:#1565c0;color:white;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;font-size:0.9rem;display:inline-flex;align-items:center;gap:0.5rem;">
+                                                    <i class="fas fa-hands-helping"></i>
+                                                    Request Volunteer
+                                                </button>
+                                            </form>
+                                        <?php else: ?>
+                                            <span style="color:#b91c1c;font-weight:500;padding:0.5rem 1rem;background:#fee2e2;border-radius:6px;">
+                                                <i class="fas fa-users-slash"></i> Event Full
+                                            </span>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <a href="../index.php?redirect=resident/announcements.php" 
+                                           style="text-decoration:none;display:inline-flex;align-items:center;gap:0.5rem;padding:0.5rem 1rem;border-radius:6px;background:#f3f4f6;color:#111;border:1px solid #e5e7eb;font-size:0.9rem;">
+                                            <i class="fas fa-sign-in-alt"></i>
+                                            Login to Volunteer
+                                        </a>
+                                    <?php endif;
+                                else: ?>
+                                    <span style="color:#6b7280;padding:0.5rem 1rem;background:#f3f4f6;border-radius:6px;font-size:0.9rem;">
+                                        <i class="fas fa-calendar-times"></i> Past Event
+                                    </span>
+                                <?php endif; ?>
+                            </div>
                             <?php endif; ?>
-                                        </div>
-                                        <div class="event-meta">
-                                            <?php if (!empty($ev['event_time'])): ?>
-                                                <span><i class="far fa-clock"></i> <?php echo htmlspecialchars($ev['event_time']); ?></span>
-                                            <?php endif; ?>
-                                            <?php if (!empty($ev['location'])): ?>
-                                                <span><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($ev['location']); ?></span>
-                                            <?php endif; ?>
-                                            <span><i class="fas fa-user"></i> <?php echo htmlspecialchars($ev['created_by_name'] ?? 'Admin'); ?></span>
-                                            <?php // Show volunteer count for all events ?>
-                                                <?php if (!empty($ev['max_volunteers'])): ?>
-                                                    <span class="volunteer-count">
-                                                        <i class="fas fa-users"></i>
-                                                        Volunteers: <?php echo $ev['volunteer_count']; ?>/<?php echo $ev['max_volunteers']; ?>
-                                                    </span>
-                                                <?php else: ?>
-                                                    <span class="volunteer-count">
-                                                        <i class="fas fa-users"></i>
-                                                        Volunteers: <?php echo $ev['volunteer_count']; ?>
-                                                    </span>
-                                                <?php endif; ?>
 
                                                 <?php
                                                 // Volunteer button: show for all events unless full
