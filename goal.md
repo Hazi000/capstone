@@ -9,7 +9,7 @@
 []-funds
 [x]-fix design for complaints modal
 [x]-integrate account management file(the account of user it should be not appear on account management)
-[]-community guidelines
+[x]-community guidelines
 suggestion
 [x]- face recognition for resident create account
 []- barangay officials
@@ -17,8 +17,25 @@ suggestion
 [x]-fix calendar dashboard design
 [x]-create sign in form for users employee
 
-[] - enhance announcement
+[x] - enhance announcement
 
+
+
+[] - add account management for resident(super admin)
+[] - add api for loocation 
+[] - create staff account
+[] - add rca
+[] - add template for certificate
+[] - add settings both resident and employee
+
+
+
+changes
+
+[] - change community engagement for resident(announcement and community engagement)
 
 
 debugging
+
+[] - fix navigation
+[] - fix design on both rbac
