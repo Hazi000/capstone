@@ -175,6 +175,109 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Content-Type: application/json');
             echo json_encode($response);
             exit();
+        } 
+        // Add new account management handling
+        if ($_POST['action'] === 'get_account') {
+            $rid = intval($_POST['resident_id'] ?? 0);
+            $resp = ['found' => false, 'user' => null, 'error' => null];
+
+            // Get resident full name for fallback
+            $res_q = mysqli_query($connection, "SELECT full_name FROM residents WHERE id = $rid LIMIT 1");
+            $resident_full = '';
+            if ($res_q && mysqli_num_rows($res_q) > 0) {
+                $resident_full = mysqli_fetch_assoc($res_q)['full_name'];
+            }
+
+            // Try to find user by resident_id (preferred)
+            $user_q = mysqli_query($connection, "SELECT id, username, resident_id FROM users WHERE resident_id = $rid LIMIT 1");
+            if ($user_q && mysqli_num_rows($user_q) > 0) {
+                $row = mysqli_fetch_assoc($user_q);
+                $resp['found'] = true;
+                $resp['user'] = $row;
+            } else {
+                // If query failed or no result, try fallback by full_name (if available)
+                if ($resident_full) {
+                    $safe_name = mysqli_real_escape_string($connection, $resident_full);
+                    $fb_q = mysqli_query($connection, "SELECT id, username, resident_id FROM users WHERE full_name = '$safe_name' LIMIT 1");
+                    if ($fb_q && mysqli_num_rows($fb_q) > 0) {
+                        $row = mysqli_fetch_assoc($fb_q);
+                        $resp['found'] = true;
+                        $resp['user'] = $row;
+                    }
+                }
+            }
+
+            header('Content-Type: application/json');
+            echo json_encode($resp);
+            exit();
+        }
+
+        if ($_POST['action'] === 'manage_account') {
+            $rid = intval($_POST['resident_id'] ?? 0);
+            $type = $_POST['type'] ?? 'create'; // 'create' or 'change_password'
+            $username = mysqli_real_escape_string($connection, $_POST['username'] ?? '');
+            $password = $_POST['password'] ?? '';
+
+            if ($type === 'create') {
+                if (empty($username) || empty($password)) {
+                    $_SESSION['error_message'] = "Username and password are required to create an account.";
+                } else {
+                    $pass_hash = password_hash($password, PASSWORD_DEFAULT);
+                    // Get resident full_name for users.full_name field
+                    $res_q = mysqli_query($connection, "SELECT full_name FROM residents WHERE id = $rid LIMIT 1");
+                    $full_name = '';
+                    if ($res_q && mysqli_num_rows($res_q) > 0) {
+                        $full_name = mysqli_fetch_assoc($res_q)['full_name'];
+                        $full_name = mysqli_real_escape_string($connection, $full_name);
+                    }
+
+                    // Include resident_id when creating user so the user is directly linked,
+                    // then update the residents table to save user_id and username (if column exists).
+                    $insert = "INSERT INTO users (username, password, full_name, role, created_at, resident_id) 
+                               VALUES ('$username', '$pass_hash', '$full_name', 'resident', NOW(), $rid)";
+                    if (mysqli_query($connection, $insert)) {
+                        $new_user_id = mysqli_insert_id($connection);
+                        // Link to resident: update user_id and try to save username on resident if column exists
+                        @mysqli_query($connection, "UPDATE residents SET user_id = $new_user_id, username = '$username' WHERE id = $rid");
+                        // Also ensure users.resident_id is set (already set in INSERT) — fallback if DB doesn't support the column
+                        @mysqli_query($connection, "UPDATE users SET resident_id = $rid WHERE id = $new_user_id");
+                        $_SESSION['success_message'] = "Account created successfully. Username saved to resident record.";
+                    } else {
+                        $_SESSION['error_message'] = "Error creating account: " . mysqli_error($connection);
+                    }
+                }
+            } elseif ($type === 'change_password') {
+                if (empty($password)) {
+                    $_SESSION['error_message'] = "Password cannot be empty.";
+                } else {
+                    // Find user by resident_id, fallback to username
+                    $user_id = 0;
+                    $u_q = mysqli_query($connection, "SELECT id FROM users WHERE resident_id = $rid LIMIT 1");
+                    if ($u_q && mysqli_num_rows($u_q) > 0) {
+                        $user_id = mysqli_fetch_assoc($u_q)['id'];
+                    } else if (!empty($username)) {
+                        $safe_user = mysqli_real_escape_string($connection, $username);
+                        $u_q2 = mysqli_query($connection, "SELECT id FROM users WHERE username = '$safe_user' LIMIT 1");
+                        if ($u_q2 && mysqli_num_rows($u_q2) > 0) {
+                            $user_id = mysqli_fetch_assoc($u_q2)['id'];
+                        }
+                    }
+
+                    if ($user_id) {
+                        $pass_hash = password_hash($password, PASSWORD_DEFAULT);
+                        if (mysqli_query($connection, "UPDATE users SET password = '$pass_hash', updated_at = NOW() WHERE id = $user_id")) {
+                            $_SESSION['success_message'] = "Password updated successfully.";
+                        } else {
+                            $_SESSION['error_message'] = "Error updating password: " . mysqli_error($connection);
+                        }
+                    } else {
+                        $_SESSION['error_message'] = "Associated user account not found for this resident.";
+                    }
+                }
+            }
+
+            header("Location: resident-profiling.php");
+            exit();
         }
     }
 }
@@ -1383,7 +1486,9 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                                             <button class="btn btn-warning btn-sm" onclick="editResident(<?php echo htmlspecialchars(json_encode($resident)); ?>)">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            
+                                            <button class="btn btn-info btn-sm" onclick='showAccountModal(<?php echo json_encode(['id'=>$resident['id'],'full_name'=>$resident['full_name']]); ?>)'>
+                                                <i class="fas fa-user-lock"></i>
+                                            </button>
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>
@@ -1734,6 +1839,46 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                         <button type="submit" class="btn btn-danger">
                             <i class="fas fa-trash"></i> Delete
                         </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Account Modal -->
+    <div class="modal" id="accountModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title"><i class="fas fa-user-lock"></i> Manage Resident Account</h3>
+                <button class="close-btn" onclick="closeModal('accountModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" id="accountForm">
+                    <input type="hidden" name="action" value="manage_account">
+                    <input type="hidden" name="resident_id" id="acct_resident_id">
+                    <div style="margin-bottom: 1rem;">
+                        <strong id="acctResidentName"></strong>
+                    </div>
+
+                    <div id="acctInfo" style="margin-bottom:1rem; display:none;">
+                        <label>Existing Account:</label>
+                        <div id="existingAccountInfo"></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="acct_username">Username</label>
+                        <input type="text" id="acct_username" name="username" class="form-control" placeholder="Username (for create or to identify user)">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="acct_password">New Password</label>
+                        <input type="password" id="acct_password" name="password" class="form-control" placeholder="Enter new password">
+                    </div>
+
+                    <div style="display:flex; gap:1rem; justify-content:flex-end; margin-top:1rem;">
+                        <button type="button" class="btn" onclick="closeModal('accountModal')" style="background:#6c757d; color:white;">Cancel</button>
+                        <button type="submit" name="type" value="change_password" class="btn btn-warning">Change Password</button>
+                        <button type="submit" name="type" value="create" class="btn btn-success">Create Account</button>
                     </div>
                 </form>
             </div>
@@ -2528,27 +2673,51 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             showModal('deleteModal');
         }
 
-        function showModal(modalId) {
-            document.getElementById(modalId).classList.add('show');
+        // Account modal functions
+        async function showAccountModal(resident) {
+            document.getElementById('acct_resident_id').value = resident.id;
+            document.getElementById('acctResidentName').textContent = resident.full_name;
+            document.getElementById('acct_username').value = '';
+            document.getElementById('acct_password').value = '';
+            document.getElementById('existingAccountInfo').innerHTML = '';
+            document.getElementById('acctInfo').style.display = 'none';
+
+            try {
+                const form = new FormData();
+                form.append('action', 'get_account');
+                form.append('resident_id', resident.id);
+
+                const resp = await fetch('resident-profiling.php', { method: 'POST', body: form });
+                const data = await resp.json();
+
+                if (data.found && data.user) {
+                    document.getElementById('acctInfo').style.display = 'block';
+                    const u = data.user;
+                    document.getElementById('existingAccountInfo').innerHTML = `
+                        <div>Username: <strong>${u.username}</strong></div>
+                        <div>User ID: <strong>${u.id}</strong></div>
+                    `;
+                    // Pre-fill username to help change password
+                    document.getElementById('acct_username').value = u.username;
+                } else {
+                    document.getElementById('acctInfo').style.display = 'none';
+                }
+
+            } catch (e) {
+                console.error(e);
+            }
+
+            // Show modal
+            document.getElementById('accountModal').classList.add('show');
             document.body.style.overflow = 'hidden';
         }
 
         function closeModal(modalId) {
             document.getElementById(modalId).classList.remove('show');
             document.body.style.overflow = 'auto';
-            
-            // Stop cameras when closing modals
-            if (modalId === 'createModal') {
-                stopCamera();
-            } else if (modalId === 'editModal') {
-                stopEditCamera();
-            } else if (modalId === 'searchModal') {
-                stopSearchCamera();
-                document.getElementById('searchResults').classList.remove('show');
-            }
         }
 
-        // Close modal when clicking outside
+        // Minimal JS to fetch account info and show modal
         document.addEventListener('click', function(e) {
             if (e.target.classList.contains('modal')) {
                 closeModal(e.target.id);

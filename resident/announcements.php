@@ -4,97 +4,57 @@ require_once '../config.php';
 
 // Handle volunteer signup from resident
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'volunteer_signup') {
-    // Determine resident id from session (ensure integer)
     $resident_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null);
+    
     if (!$resident_id) {
-        header('Location: announcements.php?vol_status=not_logged_in');
+        echo "<script>alert('Please log in first.'); window.location.href='announcements.php';</script>";
         exit();
     }
 
     $announcement_id = isset($_POST['announcement_id']) ? intval($_POST['announcement_id']) : 0;
-    if ($announcement_id <= 0) {
-        header('Location: announcements.php?vol_status=invalid_event');
+    
+    // Check for existing signup
+    $check_signup = mysqli_query($connection, "SELECT status FROM community_volunteers 
+        WHERE resident_id = $resident_id AND announcement_id = $announcement_id");
+    
+    if (mysqli_num_rows($check_signup) > 0) {
+        $status = mysqli_fetch_assoc($check_signup)['status'];
+        echo "<script>alert('You have already " . ($status == 'pending' ? 'requested to volunteer' : 'volunteered') . " for this event.'); 
+            window.location.href='announcements.php';</script>";
         exit();
     }
 
-    // Check if announcement exists and is active
-    $check_q = "SELECT id, max_volunteers, event_date FROM announcements WHERE id = $announcement_id AND status = 'active' AND announcement_type = 'event' LIMIT 1";
-    $check_r = mysqli_query($connection, $check_q);
-    if (!$check_r) {
-        // Query failed
-        header('Location: announcements.php?vol_status=error');
-        exit();
-    }
-    if (mysqli_num_rows($check_r) === 0) {
-        header('Location: announcements.php?vol_status=invalid_event');
-        exit();
-    }
-    $ann = mysqli_fetch_assoc($check_r);
-
-    // Prevent duplicate signup
-    $dup_q = "SELECT id FROM community_volunteers WHERE resident_id = " . intval($resident_id) . " AND announcement_id = $announcement_id LIMIT 1";
-    $dup_r = mysqli_query($connection, $dup_q);
-    if ($dup_r === false) {
-        header('Location: announcements.php?vol_status=error');
-        exit();
-    }
-    if ($dup_r && mysqli_num_rows($dup_r) > 0) {
-        header('Location: announcements.php?vol_status=already_signed');
-        exit();
-    }
-
-    // Check capacity if max_volunteers is set
-    if (!empty($ann['max_volunteers'])) {
-        $count_q = "SELECT COUNT(*) as c FROM community_volunteers WHERE announcement_id = $announcement_id AND status = 'approved'";
-        $count_r = mysqli_query($connection, $count_q);
-        $c = 0;
-        if ($count_r) {
-            $row = mysqli_fetch_assoc($count_r);
-            $c = isset($row['c']) ? intval($row['c']) : 0;
-        } else {
-            header('Location: announcements.php?vol_status=error');
-            exit();
-        }
-        if ($c >= intval($ann['max_volunteers'])) {
-            header('Location: announcements.php?vol_status=full');
-            exit();
-        }
-    }
-
-    // Insert volunteer signup as pending
-    $ins_q = "INSERT INTO community_volunteers (resident_id, announcement_id, status, created_at) VALUES (" . intval($resident_id) . ", $announcement_id, 'pending', NOW())";
-    if (mysqli_query($connection, $ins_q)) {
-        header('Location: announcements.php?vol_status=success');
+    // Insert new volunteer signup
+    $insert_query = "INSERT INTO community_volunteers (resident_id, announcement_id, status, created_at) 
+                    VALUES ($resident_id, $announcement_id, 'pending', NOW())";
+    
+    if (mysqli_query($connection, $insert_query)) {
+        echo "<script>alert('Volunteer request submitted successfully!'); window.location.href='announcements.php';</script>";
         exit();
     } else {
-        header('Location: announcements.php?vol_status=error');
+        echo "<script>alert('Error submitting volunteer request. Please try again.'); window.location.href='announcements.php';</script>";
         exit();
     }
 }
 
-// Get all active events that need volunteers
+// Modify events query to properly check volunteer status
+$current_user_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0);
+
 $events_query = "SELECT 
-    a.id,
-    a.event_date,
-    a.event_time,
-    a.title,
-    a.content,
-    a.location,
-    a.status,
-    a.priority,
-    a.needs_volunteers,
+    a.*,
     u.full_name as created_by_name,
-    COUNT(cv.id) as volunteer_count,
-    a.max_volunteers
+    COUNT(DISTINCT cv.id) as volunteer_count,
+    cv_user.status as user_volunteer_status
 FROM announcements a 
 LEFT JOIN users u ON a.created_by = u.id 
-LEFT JOIN community_volunteers cv ON cv.announcement_id = a.id AND cv.status = 'approved'
+LEFT JOIN community_volunteers cv ON cv.announcement_id = a.id 
+LEFT JOIN community_volunteers cv_user ON cv_user.announcement_id = a.id 
+    AND cv_user.resident_id = $current_user_id
 WHERE a.announcement_type = 'event' 
 AND a.status = 'active'
 AND a.needs_volunteers = 1
 AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())
-GROUP BY a.id, a.event_date, a.event_time, a.title, a.content, a.location, a.status, a.priority, u.full_name, a.max_volunteers, a.needs_volunteers
-ORDER BY a.event_date ASC, a.event_time ASC";
+GROUP BY a.id";
 
 $result = mysqli_query($connection, $events_query);
 $events = [];
@@ -321,6 +281,7 @@ if ($result) {
             padding: 1rem;
             border-bottom: 1px solid #f1f1f1;
             transition: background 0.3s ease;
+            position: relative;
         }
         
         .event-item:hover {
@@ -480,6 +441,209 @@ if ($result) {
             border-color: #e74c3c;
             transform: translateY(-1px);
         }
+
+        /* Add or update these styles in the <style> section */
+.event-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-left: auto;
+    gap: 1rem;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+}
+
+.event-info {
+    position: relative;
+    padding-right: 200px; /* Make space for the button */
+    flex: 1;
+}
+
+.btn-volunteer {
+    background: linear-gradient(135deg, #4a47a3 0%, #3a3782 100%);
+    color: white;
+    border: none;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(74, 71, 163, 0.2);
+    white-space: nowrap;
+}
+
+.btn-volunteer:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(74, 71, 163, 0.3);
+    background: linear-gradient(135deg, #5552b5 0%, #4a4799 100%);
+}
+
+.btn-login {
+    background: white;
+    color: #4a47a3;
+    border: 2px solid #4a47a3;
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.volunteer-status {
+    padding: 0.8rem 1.5rem;
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    white-space: nowrap;
+    font-weight: 600;
+}
+
+.volunteer-status.pending {
+    background: #fff7ed;
+    color: #c2410c;
+}
+
+.volunteer-status.approved {
+    background: #ecfdf5;
+    color: #047857;
+}
+
+.volunteer-status.full {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+        /* Sidebar Overlay */
+        .sidebar-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 999;
+            display: none;
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        /* Logout Section */
+        .logout-section {
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+        }
+
+        .logout-btn {
+            width: 100%;
+            background: rgba(231, 76, 60, 0.2);
+            color: white;
+            border: 1px solid rgba(231, 76, 60, 0.5);
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .logout-btn:hover {
+            background: rgba(231, 76, 60, 0.3);
+            border-color: #e74c3c;
+            transform: translateY(-1px);
+        }
+
+        /* Add these new button styles */
+        .event-actions {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 1rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #eee;
+        }
+
+        .btn-volunteer {
+            background: linear-gradient(135deg, #4a47a3 0%, #3a3782 100%);
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(74, 71, 163, 0.2);
+        }
+
+        .btn-volunteer:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(74, 71, 163, 0.3);
+            background: linear-gradient(135deg, #5552b5 0%, #4a4799 100%);
+        }
+
+        .btn-volunteer:active {
+            transform: translateY(0);
+        }
+
+        .btn-volunteer.disabled {
+            background: #cbd5e1;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-login {
+            background: white;
+            color: #4a47a3;
+            border: 2px solid #4a47a3;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-login:hover {
+            background: #4a47a3;
+            color: white;
+        }
+
+        .volunteer-status {
+            background: #fee2e2;
+            color: #b91c1c;
+            font-weight: 600;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -620,33 +784,41 @@ if ($result) {
                                                         Volunteers: <?php echo $ev['volunteer_count']; ?>
                                                     </span>
                                                 <?php endif; ?>
-
-                                                <?php
-                                                // Volunteer button: show for all events unless full
-                                                $is_full = !empty($ev['max_volunteers']) && intval($ev['volunteer_count']) >= intval($ev['max_volunteers']);
-                                                $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
-
-                                                if (!$is_full):
-                                                    if ($is_logged_in): ?>
-                                                        <form method="POST" style="display:inline-block; margin-left:0.5rem;">
-                                                            <input type="hidden" name="action" value="volunteer_signup">
-                                                            <input type="hidden" name="announcement_id" value="<?php echo intval($ev['id']); ?>">
-                                                            <button type="submit" class="btn-volunteer" onclick="return confirm('Send volunteer request for this event?');" style="background:#1565c0;color:white;border:none;padding:0.35rem 0.6rem;border-radius:6px;cursor:pointer;font-size:0.85rem;">
-                                                                <i class="fas fa-hands-helping"></i> Request to Volunteer
-                                                            </button>
-                                                        </form>
-                                                    <?php else: ?>
-                                                        <a href="../index.php?redirect=resident/announcements.php" style="display:inline-block;margin-left:0.5rem;padding:0.35rem 0.6rem;border-radius:6px;background:#f3f4f6;color:#111;text-decoration:none;border:1px solid #e5e7eb;font-size:0.85rem;">Login to Volunteer</a>
-                                                    <?php endif; 
-                                                else: ?>
-                                                    <span style="margin-left:0.5rem;color:#b91c1c;font-weight:600;">Full</span>
-                                                <?php endif; ?>
                                         </div>
                                         <?php if (!empty($ev['content'])): ?>
                                             <p style="margin-top:0.75rem;color:#555;line-height:1.5;">
                                                 <?php echo nl2br(htmlspecialchars($ev['content'])); ?>
                                             </p>
                                         <?php endif; ?>
+                                        <div class="event-actions">
+                                            <?php
+                                            $is_full = !empty($ev['max_volunteers']) && intval($ev['volunteer_count']) >= intval($ev['max_volunteers']);
+                                            $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
+                                            $has_volunteered = isset($ev['user_volunteer_status']);
+
+                                            if ($has_volunteered): ?>
+                                                <span class="volunteer-status <?php echo $ev['user_volunteer_status']; ?>">
+                                                    <i class="fas <?php echo $ev['user_volunteer_status'] === 'pending' ? 'fa-clock' : 'fa-check'; ?>"></i>
+                                                    <?php echo $ev['user_volunteer_status'] === 'pending' ? 'Request Pending' : 'Already Volunteering'; ?>
+                                                </span>
+                                            <?php elseif ($is_full): ?>
+                                                <span class="volunteer-status full">
+                                                    <i class="fas fa-users-slash"></i> Event Full
+                                                </span>
+                                            <?php elseif ($is_logged_in): ?>
+                                                <form method="POST" style="margin: 0;">
+                                                    <input type="hidden" name="action" value="volunteer_signup">
+                                                    <input type="hidden" name="announcement_id" value="<?php echo intval($ev['id']); ?>">
+                                                    <button type="submit" class="btn-volunteer" onclick="return confirm('Are you sure you want to volunteer for this event?');">
+                                                        <i class="fas fa-hands-helping"></i> Volunteer Now
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
+                                                <a href="../index.php?redirect=resident/announcements.php" class="btn-login">
+                                                    <i class="fas fa-sign-in-alt"></i> Login to Join
+                                                </a>
+                                            <?php endif; ?>
+                                        </div>
                                     </div>
                                 </li>
                             <?php endforeach; ?>
@@ -702,6 +874,8 @@ if ($result) {
     </script>
 </body>
 </html>
+    <script>
+        function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             const overlay = document.getElementById('sidebarOverlay');
             sidebar.classList.toggle('active');
