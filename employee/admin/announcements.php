@@ -95,6 +95,30 @@ $search = isset($_GET['search']) ? mysqli_real_escape_string($connection, $_GET[
 $filter_status = isset($_GET['status']) ? mysqli_real_escape_string($connection, $_GET['status']) : '';
 $filter_priority = isset($_GET['priority']) ? mysqli_real_escape_string($connection, $_GET['priority']) : '';
 $filter_type = isset($_GET['type']) ? mysqli_real_escape_string($connection, $_GET['type']) : '';
+// --- added: pagination settings (10 per page) and COUNT query that respects filters
+
+$per_page = 10;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+
+$count_query = "SELECT COUNT(*) as total FROM announcements a WHERE 1=1";
+if ($search) {
+    $count_query .= " AND (a.title LIKE '%$search%' OR a.content LIKE '%$search%')";
+}
+if ($filter_status) {
+    $count_query .= " AND a.status = '$filter_status'";
+}
+if ($filter_priority) {
+    $count_query .= " AND a.priority = '$filter_priority'";
+}
+if ($filter_type) {
+    $count_query .= " AND a.announcement_type = '$filter_type'";
+}
+$count_result = mysqli_query($connection, $count_query);
+$total_events = (int)mysqli_fetch_assoc($count_result)['total'];
+$total_pages = max(1, (int)ceil($total_events / $per_page));
+$page = min(max(1, $page), $total_pages);
+$offset = ($page - 1) * $per_page;
+// --- end added
 
 $query = "SELECT a.*, u.full_name as created_by_name,
           (SELECT COUNT(*) FROM community_volunteers WHERE announcement_id = a.id AND status = 'approved') as volunteer_count
@@ -119,6 +143,8 @@ if ($filter_type) {
 }
 
 $query .= " ORDER BY a.created_at DESC";
+// replace final query execution with LIMIT/OFFSET applied
+$query .= " LIMIT $per_page OFFSET $offset";
 $announcements = mysqli_query($connection, $query);
 
 // Get announcement for editing if ID is provided
@@ -390,7 +416,7 @@ if (isset($_GET['edit'])) {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2rem;
+            margin-bottom: 0.5rem;
             flex-wrap: wrap;
             gap: 1rem;
         }
@@ -439,81 +465,143 @@ if (isset($_GET['edit'])) {
             background: #5a6268;
         }
 
-        /* Search and Filter Section */
+        /* Updated Filter Section Styles */
         .filter-section {
             background: white;
-            padding: 1.5rem;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            margin-bottom: 2rem;
+            padding: 0.5rem;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+            width: fit-content;
         }
 
         .filter-row {
             display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            align-items: end;
+            gap: 0.5rem;
+            align-items: center;
         }
 
         .filter-group {
-            flex: 1;
-            min-width: 200px;
+            min-width: 120px;
+            margin: 0;
+        }
+
+        .filter-group:first-child {
+            min-width: 180px;
         }
 
         .filter-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: #555;
+            display: none;
         }
 
         .form-control {
+            height: 38px;
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+
+        .form-control::placeholder {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .btn-filter {
+            height: 38px;
+            padding: 0 1rem;
+            font-size: 0.875rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        /* Fixed logout section positioning */
+        .logout-section {
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+
+        .logout-btn {
             width: 100%;
+            background: rgba(231, 76, 60, 0.2);
+            color: white;
+            border: 1px solid rgba(231, 76, 60, 0.5);
             padding: 0.75rem;
-            border: 1px solid #ddd;
             border-radius: 8px;
-            font-size: 0.9rem;
+            cursor: pointer;
             transition: all 0.3s ease;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: #3498db;
-            box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-        }
-
-        /* Form Modal */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 2000;
+            font-size: 0.9rem;
+            display: flex;
             align-items: center;
             justify-content: center;
+            gap: 0.5rem;
         }
 
-        .modal.active {
-            display: flex;
+        .logout-btn:hover {
+            background: rgba(231, 76, 60, 0.3);
+            border-color: #e74c3c;
+            transform: translateY(-1px);
         }
 
-        .modal-content {
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+
+        .top-bar {
             background: white;
-            width: 90%;
-            max-width: 600px;
-            max-height: 90vh;
-            overflow-y: auto;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-            animation: modalSlideIn 0.3s ease;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
-        @keyframes modalSlideIn {
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .content-area {
+            padding: 2rem;
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
             from {
-                transform: translateY(-50px);
+                transform: translateY(-20px);
                 opacity: 0;
             }
             to {
@@ -522,26 +610,470 @@ if (isset($_GET['edit'])) {
             }
         }
 
-        .modal-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid #eee;
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert i {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        .alert-close {
+            margin-left: auto;
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: inherit;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .alert-close:hover {
+            opacity: 1;
+        }
+
+        /* Action Header */
+        .action-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .action-title {
+            font-size: 2rem;
+            color: #333;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* Updated Filter Section Styles */
+        .filter-section {
+            background: white;
+            padding: 0.5rem;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+            width: fit-content;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .filter-group {
+            min-width: 120px;
+            margin: 0;
+        }
+
+        .filter-group:first-child {
+            min-width: 180px;
+        }
+
+        .filter-group label {
+            display: none;
+        }
+
+        .form-control {
+            height: 38px;
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+
+        .form-control::placeholder {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .btn-filter {
+            height: 38px;
+            padding: 0 1rem;
+            font-size: 0.875rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        /* Fixed logout section positioning */
+        .logout-section {
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+
+        .logout-btn {
+            width: 100%;
+            background: rgba(231, 76, 60, 0.2);
+            color: white;
+            border: 1px solid rgba(231, 76, 60, 0.5);
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .logout-btn:hover {
+            background: rgba(231, 76, 60, 0.3);
+            border-color: #e74c3c;
+            transform: translateY(-1px);
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+
+        .top-bar {
+            background: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .modal-title {
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
             font-size: 1.5rem;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .content-area {
+            padding: 2rem;
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert i {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        .alert-close {
+            margin-left: auto;
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: inherit;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .alert-close:hover {
+            opacity: 1;
+        }
+
+        /* Action Header */
+        .action-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .action-title {
+            font-size: 2rem;
+            color: #333;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* Updated Search and Filter Section Styles */
+        .filter-section {
+            background: white;
+            padding: 0.5rem;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+            width: fit-content;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .filter-group {
+            min-width: 120px;
+            margin: 0;
+        }
+
+        .filter-group:first-child {
+            min-width: 180px;
+        }
+
+        .filter-group label {
+            display: none;
+        }
+
+        .form-control {
+            height: 38px;
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+
+        .form-control::placeholder {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .btn-filter {
+            height: 38px;
+            padding: 0 1rem;
+            font-size: 0.875rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        /* Fixed logout section positioning */
+        .logout-section {
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+
+        .logout-btn {
+            width: 100%;
+            background: rgba(231, 76, 60, 0.2);
+            color: white;
+            border: 1px solid rgba(231, 76, 60, 0.5);
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .logout-btn:hover {
+            background: rgba(231, 76, 60, 0.3);
+            border-color: #e74c3c;
+            transform: translateY(-1px);
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1050;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.active {
+            display: flex;
+            opacity: 1;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 12px;
+            width: 95%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            transform: translateY(-20px);
+            transition: transform 0.3s ease;
+        }
+
+        .modal.active .modal-content {
+            transform: translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+        }
+
+        .modal-title {
+            font-size: 1.25rem;
+            font-weight: 600;
             color: #333;
         }
 
         .modal-close {
             background: none;
             border: none;
-            font-size: 1.5rem;
+            font-size: 1.25rem;
+            color: #666;
             cursor: pointer;
-            color: #999;
-            transition: color 0.3s ease;
+            padding: 0.5rem;
         }
 
         .modal-close:hover {
@@ -552,402 +1084,7 @@ if (isset($_GET['edit'])) {
             padding: 1.5rem;
         }
 
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: #555;
-        }
-
-        .form-group textarea {
-            resize: vertical;
-            min-height: 120px;
-        }
-
-        /* Type Selection */
-        .type-select {
-            display: flex;
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-
-        .type-option {
-            flex: 1;
-            position: relative;
-        }
-
-        .type-option input[type="radio"] {
-            position: absolute;
-            opacity: 0;
-        }
-
-        .type-label {
-            display: block;
-            padding: 0.75rem;
-            text-align: center;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .type-option input[type="radio"]:checked + .type-label {
-            border-color: #3498db;
-            background: #3498db;
-            color: white;
-        }
-
-        .type-label.event {
-            border-color: #9b59b6;
-        }
-
-        .type-option input[type="radio"]:checked + .type-label.event {
-            background: #9b59b6;
-            border-color: #9b59b6;
-        }
-
-        .type-label.meeting {
-            border-color: #27ae60;
-        }
-
-        .type-option input[type="radio"]:checked + .type-label.meeting {
-            background: #27ae60;
-            border-color: #27ae60;
-        }
-
-        .type-label.general {
-            border-color: #e67e22;
-        }
-
-        .type-option input[type="radio"]:checked + .type-label.general {
-            background: #e67e22;
-            border-color: #e67e22;
-        }
-
-        .priority-select {
-            display: flex;
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-
-        .priority-option {
-            flex: 1;
-            position: relative;
-        }
-
-        .priority-option input[type="radio"] {
-            position: absolute;
-            opacity: 0;
-        }
-
-        .priority-label {
-            display: block;
-            padding: 0.75rem;
-            text-align: center;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .priority-option input[type="radio"]:checked + .priority-label {
-            border-color: #3498db;
-            background: #3498db;
-            color: white;
-        }
-
-        .priority-label.low {
-            border-color: #27ae60;
-        }
-
-        .priority-option input[type="radio"]:checked + .priority-label.low {
-            background: #27ae60;
-            border-color: #27ae60;
-        }
-
-        .priority-label.medium {
-            border-color: #f39c12;
-        }
-
-        .priority-option input[type="radio"]:checked + .priority-label.medium {
-            background: #f39c12;
-            border-color: #f39c12;
-        }
-
-        .priority-label.high {
-            border-color: #e74c3c;
-        }
-
-        .priority-option input[type="radio"]:checked + .priority-label.high {
-            background: #e74c3c;
-            border-color: #e74c3c;
-        }
-
-        .form-actions {
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-            margin-top: 2rem;
-        }
-
-        /* Volunteer Options */
-        .volunteer-options {
-            background: #f0f8ff;
-            border: 1px solid #b0d4ff;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-top: 1rem;
-            transition: all 0.3s ease;
-        }
-
-        .volunteer-options.hidden {
-            display: none;
-        }
-
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-        }
-
-        .checkbox-group label {
-            cursor: pointer;
-            font-weight: 500;
-            color: #333;
-            margin-bottom: 0;
-        }
-
-        /* Announcements Table */
-        .table-container {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            overflow: hidden;
-        }
-
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-
-        .table thead {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        }
-
-        .table th {
-            padding: 1rem;
-            text-align: left;
-            font-weight: 600;
-            color: #333;
-            border-bottom: 2px solid #dee2e6;
-        }
-
-        .table td {
-            padding: 1rem;
-            border-bottom: 1px solid #f5f5f5;
-        }
-
-        .table tbody tr {
-            transition: background 0.3s ease;
-        }
-
-        .table tbody tr:hover {
-            background: #f8f9fa;
-        }
-
-        .announcement-title {
-            font-weight: 600;
-            color: #333;
-            margin-bottom: 0.25rem;
-        }
-
-        .announcement-content {
-            color: #666;
-            font-size: 0.9rem;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .type-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-        }
-
-        .type-event {
-            background: #e8d4f1;
-            color: #7b4397;
-        }
-
-        .type-meeting {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .type-general {
-            background: #ffecd1;
-            color: #964b00;
-        }
-
-        .priority-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .priority-low {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .priority-medium {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .priority-high {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .status-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .status-active {
-            background: #d1ecf1;
-            color: #0c5460;
-        }
-
-        .status-inactive {
-            background: #e2e3e5;
-            color: #383d41;
-        }
-
-        .status-expired {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
-        .volunteer-info-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.25rem;
-            padding: 0.25rem 0.75rem;
-            border-radius: 12px;
-            font-size: 0.75rem;
-            font-weight: 500;
-        }
-
-        .volunteer-needed {
-            background: #e8f4fd;
-            color: #0066cc;
-        }
-
-        .no-volunteer {
-            background: #e8f8f0;
-            color: #009944;
-        }
-
-        .volunteer-info-badge i {
-            font-size: 0.7rem;
-        }
-
-        .table-actions {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .btn-sm {
-            padding: 0.5rem 0.75rem;
-            font-size: 0.85rem;
-        }
-
-        .btn-edit {
-            background: #f39c12;
-            color: white;
-        }
-
-        .btn-edit:hover {
-            background: #e67e22;
-        }
-
-        .btn-delete {
-            background: #e74c3c;
-            color: white;
-        }
-
-        .btn-delete:hover {
-            background: #c0392b;
-        }
-
-        .empty-state {
-            text-align: center;
-            padding: 3rem;
-            color: #666;
-            margin-bottom: 2rem;
-        }
-
-        .empty-state i {
-            font-size: 4rem;
-            color: #ddd;
-            margin-bottom: 1rem;
-        }
-
-        /* Event details section in form */
-        #eventDetailsSection {
-            border: 1px solid #e3e6f0;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-top: 1rem;
-            background: #f8f9fc;
-            transition: all 0.3s ease;
-        }
-
-        #eventDetailsSection.hidden {
-            display: none;
-        }
-
-        .section-title {
-            margin: 1.5rem 0 1rem;
-            color: #333;
-            border-bottom: 2px solid;
-            padding-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .section-title.events {
-            border-color: #7b4397;
-        }
-
-        .section-title.other {
-            border-color: #e67e22;
-        }
+        /* --- existing styles continue ... */
 
         /* Mobile Responsiveness */
         @media (max-width: 768px) {
@@ -1012,6 +1149,13 @@ if (isset($_GET['edit'])) {
         .sidebar-overlay.active {
             display: block;
         }
+
+        /* Pagination styles */
+        .pagination { display:flex; gap:0.5rem; justify-content:center; align-items:center; margin:1rem 0; flex-wrap:wrap; }
+        .page-link { padding:0.45rem 0.75rem; border-radius:6px; background:#fff; border:1px solid #e6e6ea; color:#2c3e50; text-decoration:none; font-weight:600; }
+        .page-link:hover { background:#f1f1f8; }
+        .page-link.active { background:#2c3e50; color:#fff; border-color:#2c3e50; }
+        .page-link.disabled { opacity:0.5; pointer-events:none; }
     </style>
 </head>
 <body>
@@ -1140,91 +1284,64 @@ if (isset($_GET['edit'])) {
             <div class="action-header">
                 <h1 class="action-title">Manage Announcements</h1>
                 <div class="action-buttons">
-                    <button class="btn btn-primary" onclick="openModal('create')">
+                    <!-- make button explicit type to avoid default submit behaviour -->
+                    <button type="button" class="btn btn-primary" onclick="openModal('create')">
                         <i class="fas fa-plus"></i>
                         New Announcement
                     </button>
                 </div>
             </div>
 
-            <!-- Search and Filter Section -->
             <div class="filter-section">
-                <form method="GET" action="announcements.php">
-                    <div class="filter-row">
-                        <div class="filter-group" style="flex: 2;">
-                            <label for="search">Search Announcements</label>
-                            <input type="text" 
-                                   id="search" 
-                                   name="search" 
-                                   class="form-control" 
-                                   placeholder="Search by title or content..."
-                                   value="<?php echo htmlspecialchars($search); ?>">
-                        </div>
-                        <div class="filter-group">
-                            <label for="type">Type</label>
-                            <select id="type" name="type" class="form-control">
-                                <option value="">All Types</option>
-                                <option value="general" <?php echo $filter_type === 'general' ? 'selected' : ''; ?>>General</option>
-                                <option value="event" <?php echo $filter_type === 'event' ? 'selected' : ''; ?>>Event</option>
-                                <option value="meeting" <?php echo $filter_type === 'meeting' ? 'selected' : ''; ?>>Meeting</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="status">Status</label>
-                            <select id="status" name="status" class="form-control">
-                                <option value="">All Status</option>
-                                <option value="active" <?php echo $filter_status === 'active' ? 'selected' : ''; ?>>Active</option>
-                                <option value="inactive" <?php echo $filter_status === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
-                                <option value="expired" <?php echo $filter_status === 'expired' ? 'selected' : ''; ?>>Expired</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <label for="priority">Priority</label>
-                            <select id="priority" name="priority" class="form-control">
-                                <option value="">All Priorities</option>
-                                <option value="low" <?php echo $filter_priority === 'low' ? 'selected' : ''; ?>>Low</option>
-                                <option value="medium" <?php echo $filter_priority === 'medium' ? 'selected' : ''; ?>>Medium</option>
-                                <option value="high" <?php echo $filter_priority === 'high' ? 'selected' : ''; ?>>High</option>
-                            </select>
-                        </div>
-                        <div class="filter-group">
-                            <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-search"></i>
-                                Filter
-                            </button>
-                        </div>
+                <form method="GET" action="announcements.php" class="filter-row">
+                    <div class="filter-group">
+                        <input type="text" 
+                               id="search" 
+                               name="search" 
+                               class="form-control" 
+                               placeholder="Search title or content"
+                               value="<?php echo htmlspecialchars($search); ?>">
                     </div>
+                    <div class="filter-group">
+                        <select id="type" name="type" class="form-control">
+                            <option value="">All</option>
+                            <option value="general" <?php echo $filter_type === 'general' ? 'selected' : ''; ?>>General</option>
+                            <option value="event" <?php echo $filter_type === 'event' ? 'selected' : ''; ?>>Event</option>
+                            <option value="meeting" <?php echo $filter_type === 'meeting' ? 'selected' : ''; ?>>Meeting</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <select id="status" name="status" class="form-control">
+                            <option value="">All</option>
+                            <option value="active" <?php echo $filter_status === 'active' ? 'selected' : ''; ?>>Active</option>
+                            <option value="inactive" <?php echo $filter_status === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
+                            <option value="expired" <?php echo $filter_status === 'expired' ? 'selected' : ''; ?>>Expired</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <select id="priority" name="priority" class="form-control">
+                            <option value="">All</option>
+                            <option value="active" <?php echo !$filter_priority || $filter_priority === 'active' ? 'selected' : 'selected'; ?>>Active</option>
+                            <option value="low" <?php echo $filter_priority === 'low' ? 'selected' : ''; ?>>Low</option>
+                            <option value="medium" <?php echo $filter_priority === 'medium' ? 'selected' : ''; ?>>Medium</option>
+                            <option value="high" <?php echo $filter_priority === 'high' ? 'selected' : ''; ?>>High</option>
+                        </select>
+                    </div>
+                    <button type="submit" class="btn-filter">
+                        <i class="fas fa-filter"></i>
+                        Filter
+                    </button>
                 </form>
             </div>
 
             <!-- Announcements Table -->
             <div class="table-container">
-                <?php 
-                // Reset the pointer for announcements since we used it earlier
-                mysqli_data_seek($announcements, 0);
-                
-                // Separate events from other announcements
-                $events = [];
-                $other_announcements = [];
-                
-                while ($announcement = mysqli_fetch_assoc($announcements)) {
-                    if ($announcement['announcement_type'] === 'event') {
-                        $events[] = $announcement;
-                    } else {
-                        $other_announcements[] = $announcement;
-                    }
-                }
-                ?>
-
-                <!-- Events Table -->
-                <?php if (!empty($events)): ?>
-                    <h3 class="section-title events">
-                        <i class="fas fa-calendar-check"></i> Events
-                    </h3>
+                <?php if (mysqli_num_rows($announcements) > 0): ?>
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Event</th>
+                                <th>Announcement</th>
+                                <th>Type</th>
                                 <th>Priority</th>
                                 <th>Status</th>
                                 <th>Event Details</th>
@@ -1235,7 +1352,7 @@ if (isset($_GET['edit'])) {
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($events as $announcement): ?>
+                            <?php while ($announcement = mysqli_fetch_assoc($announcements)): ?>
                                 <?php
                                     // Check if announcement is expired
                                     if ($announcement['expiry_date'] && strtotime($announcement['expiry_date']) < time() && $announcement['status'] !== 'expired') {
@@ -1248,6 +1365,23 @@ if (isset($_GET['edit'])) {
                                     <td>
                                         <div class="announcement-title"><?php echo htmlspecialchars($announcement['title']); ?></div>
                                         <div class="announcement-content"><?php echo htmlspecialchars($announcement['content']); ?></div>
+                                    </td>
+                                    <td>
+                                        <?php
+                                            $type = $announcement['announcement_type'] ?? 'general';
+                                            $icon = '';
+                                            switch($type) {
+                                                case 'meeting':
+                                                    $icon = 'fa-users';
+                                                    break;
+                                                default:
+                                                    $icon = 'fa-info-circle';
+                                            }
+                                        ?>
+                                        <span class="type-badge type-<?php echo $type; ?>">
+                                            <i class="fas <?php echo $icon; ?>"></i>
+                                            <?php echo ucfirst($type); ?>
+                                        </span>
                                     </td>
                                     <td>
                                         <span class="priority-badge priority-<?php echo $announcement['priority']; ?>">
@@ -1308,121 +1442,49 @@ if (isset($_GET['edit'])) {
                                         </div>
                                     </td>
                                 </tr>
-                            <?php endforeach; ?>
+                            <?php endwhile; ?>
                         </tbody>
                     </table>
-                <?php else: ?>
-                    <div class="empty-state">
-                        <i class="fas fa-calendar-times"></i>
-                        <h3>No events found</h3>
-                        <p>Create your first event announcement to get started.</p>
-                    </div>
-                <?php endif; ?>
 
-                <!-- Other Announcements Table -->
-                <?php if (!empty($other_announcements)): ?>
-                    <h3 class="section-title other">
-                        <i class="fas fa-bullhorn"></i> Other Announcements
-                    </h3>
-                    <table class="table">
-                        <thead>
-                            <tr>
-                                <th>Announcement</th>
-                                <th>Type</th>
-                                <th>Priority</th>
-                                <th>Status</th>
-                                <th>Details</th>
-                                <th>Expiry Date</th>
-                                <th>Created By</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php foreach ($other_announcements as $announcement): ?>
-                                <?php
-                                    // Check if announcement is expired
-                                    if ($announcement['expiry_date'] && strtotime($announcement['expiry_date']) < time() && $announcement['status'] !== 'expired') {
-                                        $update_status = "UPDATE announcements SET status = 'expired' WHERE id = " . $announcement['id'];
-                                        mysqli_query($connection, $update_status);
-                                        $announcement['status'] = 'expired';
-                                    }
-                                ?>
-                                <tr>
-                                    <td>
-                                        <div class="announcement-title"><?php echo htmlspecialchars($announcement['title']); ?></div>
-                                        <div class="announcement-content"><?php echo htmlspecialchars($announcement['content']); ?></div>
-                                    </td>
-                                    <td>
-                                        <?php
-                                            $type = $announcement['announcement_type'] ?? 'general';
-                                            $icon = '';
-                                            switch($type) {
-                                                case 'meeting':
-                                                    $icon = 'fa-users';
-                                                    break;
-                                                default:
-                                                    $icon = 'fa-info-circle';
-                                            }
-                                        ?>
-                                        <span class="type-badge type-<?php echo $type; ?>">
-                                            <i class="fas <?php echo $icon; ?>"></i>
-                                            <?php echo ucfirst($type); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="priority-badge priority-<?php echo $announcement['priority']; ?>">
-                                            <?php echo ucfirst($announcement['priority']); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-<?php echo $announcement['status']; ?>">
-                                            <?php echo ucfirst($announcement['status']); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <?php if ($announcement['event_date']): ?>
-                                            <strong><?php echo date('M j, Y', strtotime($announcement['event_date'])); ?></strong>
-                                            <?php if ($announcement['event_time']): ?>
-                                                <br><small><i class="fas fa-clock"></i> <?php echo date('g:i A', strtotime($announcement['event_time'])); ?></small>
-                                            <?php endif; ?>
-                                            <?php if ($announcement['location']): ?>
-                                                <br><small><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($announcement['location']); ?></small>
-                                            <?php endif; ?>
-                                        <?php else: ?>
-                                            <span style="color: #999;">-</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php echo $announcement['expiry_date'] ? date('M j, Y', strtotime($announcement['expiry_date'])) : 'No expiry'; ?>
-                                    </td>
-                                    <td>
-                                        <?php echo htmlspecialchars($announcement['created_by_name'] ?? 'Unknown'); ?>
-                                        <br>
-                                        <small style="color: #666;"><?php echo date('M j, Y', strtotime($announcement['created_at'])); ?></small>
-                                    </td>
-                                    <td>
-                                        <div class="table-actions">
-                                            <button class="btn btn-sm btn-edit" onclick="editAnnouncement(<?php echo $announcement['id']; ?>)">
-                                                <i class="fas fa-edit"></i>
-                                            </button>
-                                            <form method="POST" style="display: inline;" onsubmit="return confirmDelete()">
-                                                <input type="hidden" name="action" value="delete">
-                                                <input type="hidden" name="id" value="<?php echo $announcement['id']; ?>">
-                                                <button type="submit" class="btn btn-sm btn-delete">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
-                                            </form>
-                                        </div>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        </tbody>
-                    </table>
+                    <!-- added: pagination control -->
+                    <?php if ($total_pages > 1): ?>
+                        <nav class="pagination" aria-label="Announcements pagination">
+                            <?php if ($page > 1): ?>
+                                <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page-1])); ?>" aria-label="Previous"><i class="fas fa-chevron-left"></i></a>
+                            <?php else: ?>
+                                <span class="page-link disabled"><i class="fas fa-chevron-left"></i></span>
+                            <?php endif; ?>
+
+                            <?php
+                            $range = 2;
+                            $start = max(1, $page - $range);
+                            $end = min($total_pages, $page + $range);
+                            if ($start > 1) {
+                                echo '<a class="page-link" href="?'.http_build_query(array_merge($_GET, ['page'=>1])).'">1</a>';
+                                if ($start > 2) echo '<span class="page-link disabled">...</span>';
+                            }
+                            for ($i = $start; $i <= $end; $i++) {
+                                if ($i == $page) echo '<span class="page-link active">'.$i.'</span>';
+                                else echo '<a class="page-link" href="?'.http_build_query(array_merge($_GET, ['page'=>$i])).'">'.$i.'</a>';
+                            }
+                            if ($end < $total_pages) {
+                                if ($end < $total_pages - 1) echo '<span class="page-link disabled">...</span>';
+                                echo '<a class="page-link" href="?'.http_build_query(array_merge($_GET, ['page'=>$total_pages])).'">'.$total_pages.'</a>';
+                            }
+                            ?>
+
+                            <?php if ($page < $total_pages): ?>
+                                <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['page' => $page+1])); ?>" aria-label="Next"><i class="fas fa-chevron-right"></i></a>
+                            <?php else: ?>
+                                <span class="page-link disabled"><i class="fas fa-chevron-right"></i></span>
+                            <?php endif; ?>
+                        </nav>
+                    <?php endif; ?>
                 <?php else: ?>
                     <div class="empty-state">
                         <i class="fas fa-bullhorn"></i>
-                        <h3>No other announcements found</h3>
-                        <p>Create your first general announcement or meeting notice to get started.</p>
+                        <h3>No announcements found</h3>
+                        <p>Create your first announcement to get started.</p>
                     </div>
                 <?php endif; ?>
             </div>
