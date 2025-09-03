@@ -212,6 +212,8 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Community Service - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="../../css/community-service.css" rel="stylesheet">
+    <script src="../../js/community-service.js" defer></script>
     <style>
         * {
             margin: 0;
@@ -1397,7 +1399,8 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
                             $today = new DateTime();
                             $is_past = $event_date < $today;
                     ?>
-                        <div class="event-card">
+                        <!-- clickable event card (use explicit button to open volunteer applications) -->
+                        <div class="event-card" role="button">
                             <div class="event-header">
                                 <h3 class="event-title"><?php echo htmlspecialchars($event['title']); ?></h3>
                                 <div class="event-date">
@@ -1437,159 +1440,22 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
                                         <div class="progress-fill" style="width: <?php echo min(100, ($event['volunteer_count'] / 20) * 100); ?>%"></div>
                                     </div>
                                 </div>
-                            </div>
-                        </div>
+                                <!-- explicit button to view approved volunteers for this event -->
+                                <div style="margin-top:1rem; text-align:right;">
+                                    <button type="button" class="btn btn-primary" onclick="showEventVolunteers(<?php echo $event['id']; ?>)">
+                                        <i class="fas fa-users"></i> Show Volunteers
+                                    </button>
+                                </div>
+                             </div>
+                         </div>
                     <?php 
-                        endwhile; 
-                    else: 
+                         endwhile; 
+                     else: 
                     ?>
                         <div class="empty-state" style="grid-column: 1/-1;">
                             <i class="fas fa-calendar-times"></i>
                             <h3>No upcoming events</h3>
                             <p>Check back later for community service opportunities.</p>
-                        </div>
-                    <?php endif; ?>
-                </div>
-
-                <!-- Volunteers Management Section -->
-                <div class="section-header">
-                    <h2 class="section-title">Volunteer Applications</h2>
-                </div>
-
-                <!-- Filter Section -->
-                <div class="filter-section">
-                    <form method="GET" action="community_service.php">
-                        <input type="hidden" name="view" value="events">
-                        <div class="filter-row">
-                            <div class="filter-group" style="flex: 2;">
-                                <label for="search">Search Volunteers</label>
-                                <input type="text" 
-                                       id="search" 
-                                       name="search" 
-                                       class="form-control" 
-                                       placeholder="Search by name, contact, or email..."
-                                       value="<?php echo htmlspecialchars($search); ?>">
-                            </div>
-                            <div class="filter-group">
-                                <label for="event">Event</label>
-                                <select id="event" name="event" class="form-control">
-                                    <option value="">All Events</option>
-                                    <?php 
-                                    mysqli_data_seek($all_events_result, 0);
-                                    while ($event = mysqli_fetch_assoc($all_events_result)): 
-                                    ?>
-                                        <option value="<?php echo $event['id']; ?>" <?php echo $filter_event == $event['id'] ? 'selected' : ''; ?>>
-                                            <?php echo htmlspecialchars($event['title']); ?> - <?php echo date('M j, Y', strtotime($event['event_date'])); ?>
-                                        </option>
-                                    <?php endwhile; ?>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <label for="status">Status</label>
-                                <select id="status" name="status" class="form-control">
-                                    <option value="">All Status</option>
-                                    <option value="pending" <?php echo $filter_status === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                    <option value="approved" <?php echo $filter_status === 'approved' ? 'selected' : ''; ?>>Approved</option>
-                                    <option value="rejected" <?php echo $filter_status === 'rejected' ? 'selected' : ''; ?>>Rejected</option>
-                                </select>
-                            </div>
-                            <div class="filter-group">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-search"></i>
-                                    Filter
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                <!-- Volunteers Table -->
-                <div class="table-container">
-                    <?php if (mysqli_num_rows($volunteers_result) > 0): ?>
-                        <table class="table">
-                            <thead>
-                                <tr>
-                                    <th>Volunteer</th>
-                                    <th>Event</th>
-                                    <th>Application Date</th>
-                                    <th>Status</th>
-                                    <th>Attendance</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php while ($volunteer = mysqli_fetch_assoc($volunteers_result)): ?>
-                                    <tr>
-                                        <td>
-                                            <div class="volunteer-info">
-                                                <span class="volunteer-name"><?php echo htmlspecialchars($volunteer['full_name']); ?></span>
-                                                <span class="volunteer-contact">
-                                                    <?php echo htmlspecialchars($volunteer['contact_number']); ?> | 
-                                                    <?php echo htmlspecialchars($volunteer['email']); ?>
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <strong><?php echo htmlspecialchars($volunteer['event_title']); ?></strong><br>
-                                            <small><?php echo date('M j, Y', strtotime($volunteer['event_date'])); ?></small>
-                                        </td>
-                                        <td><?php echo date('M j, Y g:i A', strtotime($volunteer['created_at'])); ?></td>
-                                        <td>
-                                            <span class="status-badge status-<?php echo $volunteer['status']; ?>">
-                                                <?php echo ucfirst($volunteer['status']); ?>
-                                            </span>
-                                            <?php if ($volunteer['status'] == 'approved' && $volunteer['approved_by_name']): ?>
-                                                <br><small>by <?php echo htmlspecialchars($volunteer['approved_by_name']); ?></small>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <?php if ($volunteer['status'] == 'approved'): ?>
-                                                <?php if ($volunteer['attendance_status'] == 'attended'): ?>
-                                                    <span class="attendance-badge attendance-attended">
-                                                        Attended (<?php echo $volunteer['hours_served']; ?> hrs)
-                                                    </span>
-                                                <?php else: ?>
-                                                    <?php 
-                                                    $event_date = new DateTime($volunteer['event_date']);
-                                                    $today = new DateTime();
-                                                    if ($event_date < $today): 
-                                                    ?>
-                                                        <button class="btn btn-sm btn-warning" onclick="openAttendanceModal(<?php echo $volunteer['id']; ?>, '<?php echo htmlspecialchars($volunteer['full_name']); ?>')">
-                                                            <i class="fas fa-check"></i> Mark Attendance
-                                                        </button>
-                                                    <?php else: ?>
-                                                        <span class="attendance-badge">Upcoming</span>
-                                                    <?php endif; ?>
-                                                <?php endif; ?>
-                                            <?php else: ?>
-                                                -
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <div class="table-actions">
-                                                <?php if ($volunteer['status'] == 'pending'): ?>
-                                                    <button class="btn btn-sm btn-success" onclick="approveVolunteer(<?php echo $volunteer['id']; ?>)">
-                                                        <i class="fas fa-check"></i> Approve
-                                                    </button>
-                                                    <button class="btn btn-sm btn-danger" onclick="openRejectModal(<?php echo $volunteer['id']; ?>, '<?php echo htmlspecialchars($volunteer['full_name']); ?>')">
-                                                        <i class="fas fa-times"></i> Reject
-                                                    </button>
-                                                <?php elseif ($volunteer['status'] == 'rejected' && $volunteer['rejection_reason']): ?>
-                                                    <button class="btn btn-sm btn-secondary" onclick="showRejectionReason('<?php echo htmlspecialchars($volunteer['rejection_reason']); ?>')">
-                                                        <i class="fas fa-info-circle"></i> View Reason
-                                                    </button>
-                                                <?php endif; ?>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                <?php endwhile; ?>
-                            </tbody>
-                        </table>
-                    <?php else: ?>
-                        <div class="empty-state">
-                            <i class="fas fa-user-slash"></i>
-                            <h3>No volunteer applications found</h3>
-                            <p>No volunteers have registered for community service events yet.</p>
                         </div>
                     <?php endif; ?>
                 </div>
@@ -1947,107 +1813,252 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
         </div>
     </div>
 
-    <script>
-        // Toggle sidebar
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-        }
+    <!-- Volunteers Modal -->
+	<div class="modal" id="volunteersModal" aria-hidden="true">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h2 class="modal-title">Event Volunteers</h2>
+				<button class="modal-close" onclick="hideModal('volunteersModal')">
+					<i class="fas fa-times"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="volunteers-list" id="volunteersList"></div>
+				<div class="modal-footer-actions">
+					<span class="volunteer-count-badge"><i class="fas fa-users"></i> <span id="volunteerCountText">0 Volunteers</span></span>
+					<button class="btn btn-primary" type="button" onclick="showVolunteerApplications()">View Applications</button>
+				</div>
+			</div>
+		</div>
+	</div>
 
-        // Handle logout
-        function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                document.getElementById('logoutForm').submit();
-            }
-        }
+	<!-- Applications Modal -->
+	<div class="modal" id="applicationsModal" aria-hidden="true">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h2 class="modal-title">Volunteer Applications</h2>
+				<button class="modal-close" onclick="hideModal('applicationsModal')">
+					<i class="fas fa-times"></i>
+				</button>
+			</div>
+			<div class="modal-body">
+				<div class="applications-list" id="applicationsList"></div>
+			</div>
+		</div>
+	</div>
 
-        // Approve volunteer
-        function approveVolunteer(volunteerId) {
-            if (confirm('Are you sure you want to approve this volunteer application?')) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="action" value="approve_volunteer">
-                    <input type="hidden" name="volunteer_id" value="${volunteerId}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
-            }
-        }
+	<script>
+		// Toggle sidebar
+		function toggleSidebar() {
+			const sidebar = document.getElementById('sidebar');
+			const overlay = document.getElementById('sidebarOverlay');
+			sidebar.classList.toggle('active');
+			overlay.classList.toggle('active');
+		}
 
-        // Reject modal functions
-        function openRejectModal(volunteerId, volunteerName) {
-            document.getElementById('rejectVolunteerId').value = volunteerId;
-            document.getElementById('rejectVolunteerName').textContent = volunteerName;
-            document.getElementById('rejectModal').classList.add('active');
-        }
+		// Handle logout
+		function handleLogout() {
+			if (confirm('Are you sure you want to logout?')) {
+				document.getElementById('logoutForm').submit();
+			}
+		}
 
-        function closeRejectModal() {
-            document.getElementById('rejectModal').classList.remove('active');
-            document.getElementById('rejectForm').reset();
-        }
+		// Approve volunteer (POST form submit)
+		function approveVolunteer(volunteerId) {
+			if (!confirm('Approve this volunteer application?')) return;
+			const form = document.createElement('form');
+			form.method = 'POST';
+			form.style.display = 'none';
+			form.innerHTML = `
+				<input type="hidden" name="action" value="approve_volunteer">
+				<input type="hidden" name="volunteer_id" value="${volunteerId}">
+			`;
+			document.body.appendChild(form);
+			form.submit();
+		}
 
-        // Attendance modal functions
-        function openAttendanceModal(volunteerId, volunteerName) {
-            document.getElementById('attendanceVolunteerId').value = volunteerId;
-            document.getElementById('attendanceVolunteerName').textContent = volunteerName;
-            document.getElementById('attendanceModal').classList.add('active');
-        }
+		// Reject modal functions
+		function openRejectModal(volunteerId, volunteerName) {
+			document.getElementById('rejectVolunteerId').value = volunteerId;
+			document.getElementById('rejectVolunteerName').textContent = volunteerName;
+			showModal('rejectModal');
+		}
+		function closeRejectModal() {
+			hideModal('rejectModal');
+			const f = document.getElementById('rejectForm');
+			if (f) f.reset();
+		}
 
-        function closeAttendanceModal() {
-            document.getElementById('attendanceModal').classList.remove('active');
-            document.getElementById('attendanceForm').reset();
-        }
+		// Attendance modal functions
+		function openAttendanceModal(volunteerId, volunteerName) {
+			document.getElementById('attendanceVolunteerId').value = volunteerId;
+			document.getElementById('attendanceVolunteerName').textContent = volunteerName;
+			showModal('attendanceModal');
+		}
+		function closeAttendanceModal() {
+			hideModal('attendanceModal');
+			const f = document.getElementById('attendanceForm');
+			if (f) f.reset();
+		}
+		
+		// Centralized modal helpers
+		function showModal(id) {
+			const m = document.getElementById(id);
+			if (!m) return console.error('Modal not found', id);
+			m.setAttribute('aria-hidden','false');
+			m.style.display = 'flex';
+			m.classList.add('active');
+			document.body.style.overflow = 'hidden';
+		}
+		function hideModal(id) {
+			const m = document.getElementById(id);
+			if (!m) return;
+			m.setAttribute('aria-hidden','true');
+			m.classList.remove('active');
+			m.style.display = 'none';
+			document.body.style.overflow = '';
+		}
 
-        // Show rejection reason
-        function showRejectionReason(reason) {
-            alert('Rejection Reason:\n\n' + reason);
-        }
+		// Show volunteers for an event
+		function showEventVolunteers(eventId) {
+			const volunteersList = document.getElementById('volunteersList');
+			const countText = document.getElementById('volunteerCountText');
+			if (!volunteersList || !countText) {
+				console.error('Volunteers modal elements missing');
+				return alert('Unable to open volunteers modal.');
+			}
+			volunteersList.innerHTML = '<p>Loading...</p>';
+			countText.textContent = 'Loading...';
+			showModal('volunteersModal');
 
-        // Certificate functions
-        function generateCertificate(residentId, residentName, totalHours, totalEvents) {
-            document.getElementById('certRecipientName').textContent = residentName;
-            document.getElementById('certHours').textContent = totalHours;
-            document.getElementById('certEvents').textContent = totalEvents;
-            document.getElementById('certificatePreview').style.display = 'block';
-        }
+			// admin endpoints are in ../admin from this sec page
+			const volunteersUrl = '../admin/get_event_volunteers.php?event_id=' + encodeURIComponent(eventId);
+			console.debug('Fetching volunteers from', volunteersUrl);
+			fetch(volunteersUrl)
+				.then(res => {
+					if (!res.ok) throw new Error('Network response was not ok (' + res.status + ')');
+					const ctype = res.headers.get('content-type') || '';
+					if (!ctype.includes('application/json')) {
+						return res.text().then(text => { throw new Error('Expected JSON but received: ' + (text ? text.slice(0,200) : '[empty response]')); });
+					}
+					return res.json();
+				})
+				.then(data => {
+					document.querySelector('#volunteersModal .modal-title').textContent = data.event_title || 'Event Volunteers';
+					const volunteers = data.volunteers || [];
 
-        function closeCertificate() {
-            document.getElementById('certificatePreview').style.display = 'none';
-        }
+					const approved = volunteers.filter(v => v.status === 'approved');
+					const pending = volunteers.filter(v => v.status === 'pending');
 
-        function printCertificate() {
-            window.print();
-        }
+					let html = '';
 
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const rejectModal = document.getElementById('rejectModal');
-            const attendanceModal = document.getElementById('attendanceModal');
-            const certificatePreview = document.getElementById('certificatePreview');
-            
-            if (event.target === rejectModal) {
-                closeRejectModal();
-            }
-            if (event.target === attendanceModal) {
-                closeAttendanceModal();
-            }
-            if (event.target === certificatePreview) {
-                closeCertificate();
-            }
-        }
+					// Approved
+					html += `<div><h4>Approved (${approved.length})</h4>`;
+					if (approved.length === 0) {
+						html += '<div class="empty-state"><p>No approved volunteers yet.</p></div>';
+					} else {
+						approved.forEach(v => {
+							const profileLink = '../admin/community_service.php?view=history&resident_id=' + encodeURIComponent(v.resident_id);
+							const attendanceLabel = v.attendance_status ? (v.attendance_status === 'attended' ? 'Attended' : 'Not Attended') : 'Pending';
+							html += `
+								<div class="volunteer-item" style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #f1f1f1;">
+									<div>
+										<strong><a href="${profileLink}" target="_blank" rel="noopener">${escapeHtml(v.name)}</a></strong>
+										<div class="volunteer-contact" style="color:#666;font-size:0.9rem;">${escapeHtml(v.contact || '')}</div>
+									</div>
+									<div>
+										<span class="status-badge status-approved">${escapeHtml(attendanceLabel)}</span>
+									</div>
+								</div>
+							`;
+						});
+					}
+					html += `</div>`;
 
-        // Close alert messages after 5 seconds
-        setTimeout(function() {
-            const alerts = document.querySelectorAll('.alert');
-            alerts.forEach(alert => {
-                alert.style.opacity = '0';
-                setTimeout(() => alert.remove(), 300);
-            });
-        }, 5000);
-    </script>
+					// Pending — plain name + action buttons
+					html += `<div style="margin-top:0.75rem;"><h4>Pending (${pending.length})</h4>`;
+					if (pending.length === 0) {
+						html += '<div class="empty-state"><p>No pending requests.</p></div>';
+					} else {
+						pending.forEach(v => {
+							const jsName = (v.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+							html += `
+								<div class="volunteer-item" style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid #f1f1f1;">
+									<div>
+										<strong>${escapeHtml(v.name)}</strong>
+										<div class="volunteer-contact" style="color:#666;font-size:0.9rem;">${escapeHtml(v.contact || '')}</div>
+									</div>
+									<div style="display:flex;gap:0.5rem;">
+										<button class="btn btn-sm btn-success" type="button" onclick="approveVolunteer(${v.id})"><i class="fas fa-check"></i> Approve</button>
+										<button class="btn btn-sm btn-danger" type="button" onclick="openRejectModal(${v.id}, '${jsName}')"><i class="fas fa-times"></i> Reject</button>
+									</div>
+								</div>
+							`;
+						});
+					}
+					html += `</div>`;
+
+					volunteersList.innerHTML = html;
+					countText.textContent = volunteers.length + ' Volunteers';
+					document.getElementById('volunteersModal').dataset.eventId = eventId;
+				})
+				.catch(err => {
+					console.error('Failed to load volunteers:', err);
+					volunteersList.innerHTML = '<div class="empty-state"><p>Error loading volunteers. (' + (err.message||'') + ')</p></div>';
+					countText.textContent = '0 Volunteers';
+				});
+		}
+ 
+		// Show applications for a given eventId (if eventId omitted, fallback to volunteersModal dataset)
+		function showVolunteerApplications(eventId) {
+			if (!eventId) {
+				const vm = document.getElementById('volunteersModal');
+				eventId = vm ? vm.dataset.eventId : null;
+			}
+			if (!eventId) return alert('Event not selected.');
+			const modal = document.getElementById('applicationsModal');
+			const list = document.getElementById('applicationsList');
+			list.innerHTML = '<p>Loading...</p>';
+			const appsUrl = '../admin/get_volunteer_applications.php?event_id=' + encodeURIComponent(eventId);
+			console.debug('Fetching applications from', appsUrl);
+			fetch(appsUrl)
+				.then(res => {
+					if (!res.ok) throw new Error('Network response was not ok (' + res.status + ')');
+					const ctype = res.headers.get('content-type') || '';
+					if (!ctype.includes('application/json')) {
+						return res.text().then(text => { throw new Error('Expected JSON but received: ' + (text ? text.slice(0,200) : '[empty response]')); });
+					}
+					return res.json();
+				})
+				.then(data => {
+ 					list.innerHTML = '';
+ 					const apps = data.applications || [];
+ 					if (apps.length === 0) {
+ 						list.innerHTML = '<div class="empty-state"><p>No pending applications.</p></div>';
+ 					} else {
+ 						apps.forEach(app => {
+ 							list.insertAdjacentHTML('beforeend', `
+ 								<div class="volunteer-item">
+ 									<div>
+ 										<strong>${escapeHtml(app.name)}</strong>
+ 										<div class="volunteer-contact">${escapeHtml(app.contact || '')}</div>
+ 									</div>
+ 									<div class="application-actions">
+ 										<button class="btn btn-sm btn-success" type="button" onclick="approveVolunteer(${app.id})"><i class="fas fa-check"></i> Approve</button>
+ 										<button class="btn btn-sm btn-danger" type="button" onclick="openRejectModal(${app.id}, '${escapeJs(app.name)}')"><i class="fas fa-times"></i> Reject</button>
+ 									</div>
+ 								</div>
+ 							`);
+ 						});
+ 					}
+ 					showModal('applicationsModal');
+ 				})
+ 				.catch(err => {
+ 					console.error('Failed to load applications:', err);
+ 					list.innerHTML = '<div class="empty-state"><p>Error loading applications. (' + (err.message||'') + ')</p></div>';
+ 					showModal('applicationsModal');
+ 				});
+		}
+	</script>
 </body>
 </html>

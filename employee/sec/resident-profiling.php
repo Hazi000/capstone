@@ -306,7 +306,7 @@ $count_result = mysqli_query($connection, $count_query);
 $total_records = mysqli_fetch_assoc($count_result)['total'];
 $total_pages = ceil($total_records / $records_per_page);
 
-// Get residents
+// Get residents with pagination
 $residents_query = "SELECT * FROM residents $where_clause ORDER BY created_at DESC LIMIT $records_per_page OFFSET $offset";
 $residents_result = mysqli_query($connection, $residents_query);
 

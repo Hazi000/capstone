@@ -617,99 +617,6 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-     
-
-        .upcoming-events {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            overflow: hidden;
-            margin-top: 1rem;
-        }
-
-        .upcoming-header {
-            padding: 1.5rem;
-            border-bottom: 1px solid #eee;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-        }
-
-        .upcoming-title {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #333;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .upcoming-list {
-    max-height: 300px; /* Reduced from 400px */
-    overflow-y: auto;
-}
-
-        .upcoming-item {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid #f5f5f5;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .upcoming-item:last-child {
-            border-bottom: none;
-        }
-
-        .upcoming-date {
-            background: #f8f9fa;
-            padding: 0.5rem;
-            border-radius: 8px;
-            text-align: center;
-            min-width: 60px;
-        }
-
-        .upcoming-date-day {
-            font-size: 1.2rem;
-            font-weight: bold;
-            color: #333;
-        }
-
-        .upcoming-date-month {
-            font-size: 0.7rem;
-            color: #666;
-        }
-
-        .upcoming-info {
-            flex: 1;
-        }
-
-        .upcoming-info h4 {
-            font-size: 0.9rem;
-            color: #333;
-            margin-bottom: 0.25rem;
-        }
-
-        .upcoming-info p {
-            font-size: 0.8rem;
-            color: #666;
-        }
-
-        .upcoming-type {
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.75rem;
-            font-weight: bold;
-        }
-
-        .upcoming-type.appointment {
-            background: #e3f2fd;
-            color: #1976d2;
-        }
-
-        .upcoming-type.announcement {
-            background: #fff3e0;
-            color: #f57c00;
-        }
-
         /* Mobile Responsiveness */
         @media (max-width: 1200px) {
             .dashboard-layout {
@@ -753,10 +660,6 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
             .calendar-day {
                 min-height: 50px;
                 padding: 0.25rem;
-            }
-
-            .upcoming-item {
-                padding: 0.75rem 1rem;
             }
          @media (max-width: 768px) {
     .calendar-day {
@@ -1042,56 +945,6 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
                                 <div class="calendar-day-header">SAT</div>
                             </div>
                             <div class="calendar-days-grid" id="calendarDays"></div>
-                        </div>
-                    </div>
-
-                    <div class="upcoming-events">
-                        <div class="upcoming-header">
-                            <h3 class="upcoming-title">
-                                <i class="fas fa-clock"></i>
-                                Upcoming Events
-                            </h3>
-                        </div>
-                        <div class="upcoming-list">
-                            <?php 
-                            $events_data = [];
-                            mysqli_data_seek($calendar_events, 0);
-                            if (mysqli_num_rows($calendar_events) > 0): 
-                                while ($event = mysqli_fetch_assoc($calendar_events)): 
-                                    $events_data[] = $event;
-                            ?>
-                                <div class="upcoming-item">
-                                    <div class="upcoming-date">
-                                        <div class="upcoming-date-day"><?php echo date('j', strtotime($event['event_date'])); ?></div>
-                                        <div class="upcoming-date-month"><?php echo date('M', strtotime($event['event_date'])); ?></div>
-                                    </div>
-                                    <div class="upcoming-info">
-                                        <h4><?php echo htmlspecialchars($event['title']); ?></h4>
-                                        <p>
-                                            <?php if ($event['time']): ?>
-                                                <?php echo date('g:i A', strtotime($event['time'])); ?> • 
-                                            <?php endif; ?>
-                                            <?php if ($event['type'] == 'appointment'): ?>
-                                                with <?php echo htmlspecialchars($event['resident_name'] ?? 'Unknown'); ?>
-                                            <?php else: ?>
-                                                by <?php echo htmlspecialchars($event['resident_name'] ?? 'Unknown'); ?>
-                                            <?php endif; ?>
-                                        </p>
-                                    </div>
-                                    <span class="upcoming-type <?php echo $event['type']; ?>">
-                                        <?php echo ucfirst($event['type']); ?>
-                                    </span>
-                                </div>
-                            <?php 
-                                endwhile; 
-                            else: 
-                            ?>
-                                <div class="upcoming-item">
-                                    <div class="upcoming-info">
-                                        <p style="text-align: center; color: #666; padding: 2rem;">No upcoming events</p>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
                         </div>
                     </div>
                 </div>

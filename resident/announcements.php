@@ -2,44 +2,97 @@
 session_start();
 require_once '../config.php';
 
-// Handle volunteer signup from resident
+// handle volunteer signup safely and create table if missing
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'volunteer_signup') {
-    $resident_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null);
-    
-    if (!$resident_id) {
-        echo "<script>alert('Please log in first.'); window.location.href='announcements.php';</script>";
-        exit();
-    }
+	$resident_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : 0;
+	$announcement_id = isset($_POST['announcement_id']) ? intval($_POST['announcement_id']) : 0;
 
-    $announcement_id = isset($_POST['announcement_id']) ? intval($_POST['announcement_id']) : 0;
-    
-    // Check for existing signup
-    $check_signup = mysqli_query($connection, "SELECT status FROM community_volunteers 
-        WHERE resident_id = $resident_id AND announcement_id = $announcement_id");
-    
-    if (mysqli_num_rows($check_signup) > 0) {
-        $status = mysqli_fetch_assoc($check_signup)['status'];
-        echo "<script>alert('You have already " . ($status == 'pending' ? 'requested to volunteer' : 'volunteered') . " for this event.'); 
-            window.location.href='announcements.php';</script>";
-        exit();
-    }
+	if ($resident_id <= 0 || $announcement_id <= 0) {
+		echo "<script>alert('Invalid request.'); window.location.href='announcements.php';</script>";
+		exit();
+	}
 
-    // Insert new volunteer signup
-    $insert_query = "INSERT INTO community_volunteers (resident_id, announcement_id, status, created_at) 
-                    VALUES ($resident_id, $announcement_id, 'pending', NOW())";
-    
-    if (mysqli_query($connection, $insert_query)) {
-        echo "<script>alert('Volunteer request submitted successfully!'); window.location.href='announcements.php';</script>";
-        exit();
-    } else {
-        echo "<script>alert('Error submitting volunteer request. Please try again.'); window.location.href='announcements.php';</script>";
-        exit();
-    }
+	// Ensure community_volunteers table exists (safe to run repeatedly)
+	$create_sql = "
+	CREATE TABLE IF NOT EXISTS community_volunteers (
+		id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+		resident_id INT UNSIGNED NOT NULL,
+		announcement_id INT UNSIGNED NOT NULL,
+		status ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+		rejection_reason TEXT NULL,
+		approved_by INT UNSIGNED NULL,
+		approved_at DATETIME NULL,
+		attendance_status ENUM('pending','attended','absent') DEFAULT 'pending',
+		hours_served DECIMAL(6,2) NULL DEFAULT NULL,
+		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME NULL
+	) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+	";
+	@mysqli_query($connection, $create_sql); // ignore error here; table creation is best-effort
+
+	// Check existing signup for this resident+announcement
+	$check_sql = "SELECT id, status FROM community_volunteers WHERE resident_id = ? AND announcement_id = ? LIMIT 1";
+	if ($stmt = $connection->prepare($check_sql)) {
+		$stmt->bind_param('ii', $resident_id, $announcement_id);
+		$stmt->execute();
+		$stmt->store_result();
+		if ($stmt->num_rows > 0) {
+			$stmt->bind_result($existing_id, $existing_status);
+			$stmt->fetch();
+			$msg = ($existing_status === 'pending') ? 'You already requested to volunteer for this event.' : 'You are already registered as a volunteer for this event.';
+			echo "<script>alert(" . json_encode($msg) . "); window.location.href='announcements.php';</script>";
+			$stmt->close();
+			exit();
+		}
+		$stmt->close();
+	} else {
+		// If prepare fails, fallback to safe error
+		echo "<script>alert('Unable to process request.'); window.location.href='announcements.php';</script>";
+		exit();
+	}
+
+	// Insert new volunteer signup (pending)
+	$insert_sql = "INSERT INTO community_volunteers (resident_id, announcement_id, status, created_at) VALUES (?, ?, 'pending', NOW())";
+	if ($ins = $connection->prepare($insert_sql)) {
+		$ins->bind_param('ii', $resident_id, $announcement_id);
+		if ($ins->execute()) {
+			echo "<script>alert('Volunteer request submitted successfully!'); window.location.href='announcements.php';</script>";
+			$ins->close();
+			exit();
+		} else {
+			$ins->close();
+			echo "<script>alert('Error submitting volunteer request. Please try again.'); window.location.href='announcements.php';</script>";
+			exit();
+		}
+	} else {
+		echo "<script>alert('Error submitting volunteer request. Please try again.'); window.location.href='announcements.php';</script>";
+		exit();
+	}
 }
 
 // Modify events query to properly check volunteer status
 $current_user_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0);
 
+// Add pagination settings
+$per_page = 5;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+
+// Get total events count
+$count_query = "SELECT COUNT(*) as total FROM announcements a 
+    WHERE a.announcement_type = 'event' 
+    AND a.status = 'active'
+    AND a.needs_volunteers = 1
+    AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())";
+    
+$count_result = mysqli_query($connection, $count_query);
+$total_events = mysqli_fetch_assoc($count_result)['total'];
+$total_pages = ceil($total_events / $per_page);
+
+// Ensure current page is within valid range
+$page = min(max(1, $page), $total_pages);
+$offset = ($page - 1) * $per_page;
+
+// Modify main query to include LIMIT and OFFSET
 $events_query = "SELECT 
     a.*,
     u.full_name as created_by_name,
@@ -54,7 +107,9 @@ WHERE a.announcement_type = 'event'
 AND a.status = 'active'
 AND a.needs_volunteers = 1
 AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())
-GROUP BY a.id";
+GROUP BY a.id
+ORDER BY a.event_date ASC
+LIMIT $per_page OFFSET $offset";
 
 $result = mysqli_query($connection, $events_query);
 $events = [];
@@ -784,45 +839,84 @@ if ($result) {
                                                         Volunteers: <?php echo $ev['volunteer_count']; ?>
                                                     </span>
                                                 <?php endif; ?>
-                                        </div>
-                                        <?php if (!empty($ev['content'])): ?>
-                                            <p style="margin-top:0.75rem;color:#555;line-height:1.5;">
-                                                <?php echo nl2br(htmlspecialchars($ev['content'])); ?>
-                                            </p>
-                                        <?php endif; ?>
-                                        <div class="event-actions">
-                                            <?php
-                                            $is_full = !empty($ev['max_volunteers']) && intval($ev['volunteer_count']) >= intval($ev['max_volunteers']);
-                                            $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
-                                            $has_volunteered = isset($ev['user_volunteer_status']);
+                                </div>
+                                <?php if (!empty($ev['content'])): ?>
+                                    <p style="margin-top:0.75rem;color:#555;line-height:1.5;">
+                                        <?php echo nl2br(htmlspecialchars($ev['content'])); ?>
+                                    </p>
+                                <?php endif; ?>
+                                <div class="event-actions">
+                                    <?php
+                                    $is_full = !empty($ev['max_volunteers']) && intval($ev['volunteer_count']) >= intval($ev['max_volunteers']);
+                                    $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
+                                    $has_volunteered = isset($ev['user_volunteer_status']);
 
+                                    <span class="volunteer-status <?php echo $ev['user_volunteer_status']; ?>">
                                             if ($has_volunteered): ?>
-                                                <span class="volunteer-status <?php echo $ev['user_volunteer_status']; ?>">
-                                                    <i class="fas <?php echo $ev['user_volunteer_status'] === 'pending' ? 'fa-clock' : 'fa-check'; ?>"></i>
-                                                    <?php echo $ev['user_volunteer_status'] === 'pending' ? 'Request Pending' : 'Already Volunteering'; ?>
-                                                </span>
-                                            <?php elseif ($is_full): ?>
-                                                <span class="volunteer-status full">
-                                                    <i class="fas fa-users-slash"></i> Event Full
-                                                </span>
-                                            <?php elseif ($is_logged_in): ?>
-                                                <form method="POST" style="margin: 0;">
-                                                    <input type="hidden" name="action" value="volunteer_signup">
-                                                    <input type="hidden" name="announcement_id" value="<?php echo intval($ev['id']); ?>">
-                                                    <button type="submit" class="btn-volunteer" onclick="return confirm('Are you sure you want to volunteer for this event?');">
-                                                        <i class="fas fa-hands-helping"></i> Volunteer Now
-                                                    </button>
-                                                </form>
-                                            <?php else: ?>
-                                                <a href="../index.php?redirect=resident/announcements.php" class="btn-login">
-                                                    <i class="fas fa-sign-in-alt"></i> Login to Join
-                                                </a>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                </li>
+                                            <i class="fas <?php echo $ev['user_volunteer_status'] === 'pending' ? 'fa-clock' : 'fa-check'; ?>"></i>
+                                            <?php echo $ev['user_volunteer_status'] === 'pending' ? 'Request Pending' : 'Already Volunteering'; ?>
+                                        </span>
+                                    <?php elseif ($is_full): ?>
+                                        <span class="volunteer-status full">
+                                            <i class="fas fa-users-slash"></i> Event Full
+                                        </span>
+                                    <?php elseif ($is_logged_in): ?>
+                                        <form method="POST" style="margin: 0;">
+                                            <input type="hidden" name="announcement_id" value="<?php echo intval($ev['id']); ?>">
+                                            <!-- request_volunteer tells server to create a pending application -->
+                                            <input type="hidden" name="action" value="volunteer_signup">
+                                            <button type="submit" class="btn-volunteer" onclick="return confirm('Send volunteer request for this event?');">
+                                                <i class="fas fa-hands-helping"></i> Request to Volunteer
+                                            </button>
+                                        </form>
+                                    <?php else: ?>
+                                        <a href="../index.php?redirect=resident/announcements.php" class="btn-login">
+                                            <i class="fas fa-sign-in-alt"></i> Login to Join
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </li>
                             <?php endforeach; ?>
                         </ul>
+                        
+                        <!-- Add pagination controls -->
+                        <?php if ($total_pages > 1): ?>
+                        <div class="pagination" style="display: flex; justify-content: center; padding: 1rem; gap: 0.5rem;">
+                            <?php if ($page > 1): ?>
+                                <a href="?page=<?php echo ($page - 1); ?>" class="btn-volunteer" style="padding: 0.5rem 1rem;">
+                                    <i class="fas fa-chevron-left"></i> Previous
+                                </a>
+                            <?php endif; ?>
+                            
+                            <?php
+                            $start = max(1, min($page - 2, $total_pages - 4));
+                            $end = min($total_pages, max($page + 2, 5));
+                            
+                            if ($start > 1) {
+                                echo '<span style="padding: 0.5rem 1rem;">...</span>';
+                            }
+                            
+                            for ($i = $start; $i <= $end; $i++) {
+                                if ($i == $page) {
+                                    echo "<span style='padding: 0.5rem 1rem; background: #4a47a3; color: white; border-radius: 4px;'>$i</span>";
+                                } else {
+                                    echo "<a href='?page=$i' style='padding: 0.5rem 1rem; color: #4a47a3; text-decoration: none;'>$i</a>";
+                                }
+                            }
+                            
+                            if ($end < $total_pages) {
+                                echo '<span style="padding: 0.5rem 1rem;">...</span>';
+                            }
+                            ?>
+                            
+                            <?php if ($page < $total_pages): ?>
+                                <a href="?page=<?php echo ($page + 1); ?>" class="btn-volunteer" style="padding: 0.5rem 1rem;">
+                                    Next <i class="fas fa-chevron-right"></i>
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
             </div>

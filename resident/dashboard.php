@@ -892,7 +892,7 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
                     </div>
                 </div>
 
-                <!-- Right Section - Announcements and Events -->
+                <!-- Right Section - Announcements -->
                 <div class="right-section">
                     <div class="announcements-widget">
                         <div class="announcements-header">
@@ -924,45 +924,6 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
                                 <div class="empty-state">
                                     <i class="fas fa-megaphone"></i>
                                     <p>No announcements at this time</p>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                    <div class="upcoming-events">
-                        <div class="upcoming-header">
-                            <h3 class="upcoming-title">
-                                <i class="fas fa-calendar-alt"></i>
-                                Upcoming Events
-                            </h3>
-                        </div>
-                        <div class="upcoming-list">
-                            <?php if (mysqli_num_rows($upcoming_events) > 0): ?>
-                                <?php while ($event = mysqli_fetch_assoc($upcoming_events)): ?>
-                                    <div class="upcoming-item">
-                                        <div class="upcoming-date">
-                                            <div class="upcoming-date-day"><?php echo date('j', strtotime($event['event_date'])); ?></div>
-                                            <div class="upcoming-date-month"><?php echo date('M', strtotime($event['event_date'])); ?></div>
-                                        </div>
-                                        <div class="upcoming-info">
-                                            <h4><?php echo htmlspecialchars($event['title']); ?></h4>
-                                            <p>
-                                                <?php if ($event['time']): ?>
-                                                    <?php echo date('g:i A', strtotime($event['time'])); ?>
-                                                <?php else: ?>
-                                                    All Day Event
-                                                <?php endif; ?>
-                                            </p>
-                                        </div>
-                                        <span class="upcoming-type">
-                                            Event
-                                        </span>
-                                    </div>
-                                <?php endwhile; ?>
-                            <?php else: ?>
-                                <div class="empty-state">
-                                    <i class="fas fa-calendar-times"></i>
-                                    <p>No upcoming events</p>
                                 </div>
                             <?php endif; ?>
                         </div>
