@@ -727,8 +727,8 @@ if (isset($_GET['edit'])) {
         }
 
         .form-control {
-            height: 38px;
             padding: 0.375rem 0.75rem;
+            height: 38px;
             font-size: 0.875rem;
             border: 1px solid #e2e8f0;
             border-radius: 6px;

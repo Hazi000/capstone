@@ -3,10 +3,10 @@ session_start();
 require_once '../config.php';
 
 // Check if user is logged in and is a resident
-//if (!isset($_SESSION['resident_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
-    //header("Location: ../index.php");
-  //  exit();
-//}
+header("Location: ../index.php");
+exit();
+if (!isset($_SESSION['resident_id']) || !isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+}
 
 $resident_id = $_SESSION['resident_id'];
 

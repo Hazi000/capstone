@@ -3,10 +3,10 @@ session_start();
 require_once '../../config.php';
 
 // Check if user is logged in and is authorized
-//if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
-    //header("Location: ../index.php");
-    //exit();
-//}
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
+    header("Location: ../index.php");
+    exit();
+}
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
