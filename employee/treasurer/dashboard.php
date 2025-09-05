@@ -2,39 +2,114 @@
 session_start();
 require_once '../../config.php';
 
-// Check if user is logged in and is a secretary
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
+// Check if user is logged in and is a treasurer
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'treasurer') {
     header("Location: ../index.php");
     exit();
 }
 
-// Get dashboard statistics
-$stats = [];
+// Get current month and year
+$current_month = date('m');
+$current_year = date('Y');
+
+// Initialize statistics array with default values
+$stats = [
+    'total_budget' => 0,
+    'total_expenses' => 0,
+    'monthly_expenses' => 0,
+    'available_budget' => 0,
+    'total_complaints' => 0,
+    'pending_complaints' => 0,
+    'total_appointments' => 0,
+    'pending_appointments' => 0,
+    'total_residents' => 0
+];
+
+// Update the budget query to use the new structure
+$budget_query = "SELECT COALESCE(SUM(amount), 0) as total FROM budgets WHERE YEAR(budget_date) = $current_year";
+$result = mysqli_query($connection, $budget_query);
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['total_budget'] = mysqli_fetch_assoc($result)['total'];
+}
+
+// Update expenses query to use created_at
+$expenses_query = "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE YEAR(created_at) = $current_year";
+$result = mysqli_query($connection, $expenses_query);
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['total_expenses'] = mysqli_fetch_assoc($result)['total'];
+}
+
+// Calculate available budget
+$stats['available_budget'] = $stats['total_budget'] - $stats['total_expenses'];
+
+// Update monthly expenses query to use created_at
+$monthly_expenses_query = "SELECT COALESCE(SUM(amount), 0) as total FROM expenses 
+                         WHERE MONTH(created_at) = $current_month AND YEAR(created_at) = $current_year";
+$result = mysqli_query($connection, $monthly_expenses_query);
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['monthly_expenses'] = mysqli_fetch_assoc($result)['total'];
+} else {
+    $stats['monthly_expenses'] = 0;
+}
+
+// Update expense categories query to use budget items instead of categories
+$expense_categories_query = "SELECT b.item as category, COALESCE(SUM(e.amount), 0) as total 
+                           FROM budgets b 
+                           LEFT JOIN expenses e ON b.id = e.budget_id 
+                           WHERE YEAR(b.budget_date) = $current_year 
+                           GROUP BY b.id, b.item";
+$expense_categories = mysqli_query($connection, $expense_categories_query);
+$expense_categories_data = [];
+if ($expense_categories) {
+    while($row = mysqli_fetch_assoc($expense_categories)) {
+        $expense_categories_data[] = $row;
+    }
+}
 
 // Count total complaints
 $complaint_query = "SELECT COUNT(*) as total FROM complaints";
 $result = mysqli_query($connection, $complaint_query);
-$stats['total_complaints'] = mysqli_fetch_assoc($result)['total'];
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['total_complaints'] = mysqli_fetch_assoc($result)['total'];
+} else {
+    $stats['total_complaints'] = 0;
+}
 
 // Count pending complaints
 $pending_complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE status = 'pending'";
 $result = mysqli_query($connection, $pending_complaint_query);
-$stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
+} else {
+    $stats['pending_complaints'] = 0;
+}
 
 // Count total appointments
 $appointment_query = "SELECT COUNT(*) as total FROM appointments";
 $result = mysqli_query($connection, $appointment_query);
-$stats['total_appointments'] = mysqli_fetch_assoc($result)['total'];
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['total_appointments'] = mysqli_fetch_assoc($result)['total'];
+} else {
+    $stats['total_appointments'] = 0;
+}
 
 // Count pending appointments
 $pending_appointment_query = "SELECT COUNT(*) as pending FROM appointments WHERE status = 'pending'";
 $result = mysqli_query($connection, $pending_appointment_query);
-$stats['pending_appointments'] = mysqli_fetch_assoc($result)['pending'];
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['pending_appointments'] = mysqli_fetch_assoc($result)['pending'];
+} else {
+    $stats['pending_appointments'] = 0;
+}
 
 // Count total residents
 $residents_query = "SELECT COUNT(*) as total FROM residents";
 $result = mysqli_query($connection, $residents_query);
-$stats['total_residents'] = mysqli_fetch_assoc($result)['total'];
+if ($result && mysqli_num_rows($result) > 0) {
+    $stats['total_residents'] = mysqli_fetch_assoc($result)['total'];
+} else {
+    $stats['total_residents'] = 0;
+}
 
 // Get recent complaints
 $recent_complaints_query = "SELECT c.*, r.full_name FROM complaints c 
@@ -109,6 +184,41 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
         $recent_residents_data[] = $row;
     }
 }
+
+// Fetch budgets for detail panel
+$budgets_query = "SELECT description, amount, budget_date, status FROM budgets WHERE YEAR(created_at) = $current_year ORDER BY budget_date DESC";
+$budgets_result = mysqli_query($connection, $budgets_query);
+$budgets_data = [];
+if ($budgets_result && mysqli_num_rows($budgets_result) > 0) {
+    while ($row = mysqli_fetch_assoc($budgets_result)) {
+        $budgets_data[] = $row;
+    }
+}
+
+// Update the monthly expenses detail query
+$monthly_expenses_detail_query = "SELECT e.*, b.item as category 
+                                FROM expenses e 
+                                LEFT JOIN budgets b ON e.budget_id = b.id 
+                                WHERE MONTH(e.created_at) = $current_month 
+                                AND YEAR(e.created_at) = $current_year 
+                                ORDER BY e.created_at DESC";
+$monthly_expenses_detail_result = mysqli_query($connection, $monthly_expenses_detail_query);
+$monthly_expenses_data = [];
+if ($monthly_expenses_detail_result && mysqli_num_rows($monthly_expenses_detail_result) > 0) {
+    while ($row = mysqli_fetch_assoc($monthly_expenses_detail_result)) {
+        $monthly_expenses_data[] = $row;
+    }
+}
+
+// Fetch all expenses for total expenses detail panel
+$total_expenses_detail_query = "SELECT category, amount, date, description FROM expenses WHERE YEAR(date) = $current_year ORDER BY date DESC";
+$total_expenses_detail_result = mysqli_query($connection, $total_expenses_detail_query);
+$total_expenses_data = [];
+if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_result) > 0) {
+    while ($row = mysqli_fetch_assoc($total_expenses_detail_result)) {
+        $total_expenses_data[] = $row;
+    }
+}
 ?>
 
 <!DOCTYPE html>
@@ -118,6 +228,8 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Super Admin Dashboard - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Add Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {
             margin: 0;
@@ -501,6 +613,8 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
             overflow: hidden;
+            max-width: 800px;  /* Add max-width */
+            margin: 0 auto;    /* Center the calendar */
         }
 
         .calendar-header {
@@ -567,7 +681,7 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
         .calendar-day {
             background: white;
             border: 1px solid #e0e0e0;
-            min-height: 80px;
+            min-height: 60px;  /* Reduce height from 80px */
             padding: 0.5rem;
             position: relative;
             transition: background 0.2s ease;
@@ -625,6 +739,15 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
             
             .recent-activities {
                 grid-template-columns: 1fr;
+            }
+
+            .stats-overview {
+                grid-template-columns: 1fr !important;
+            }
+            
+            .chart-container, .calendar-widget {
+                height: 500px !important;
+                margin-bottom: 2rem;
             }
         }
 
@@ -692,6 +815,37 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
         .sidebar-overlay.active {
             display: block;
         }
+
+        .expense-chart-card {
+            padding: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 200px;
+        }
+
+        .detail-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+
+        .detail-table th, .detail-table td {
+            padding: 0.5rem;
+            border-bottom: 1px solid #eee;
+            text-align: left;
+        }
+
+        .detail-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+
+        .detail-amount {
+            text-align: right;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
@@ -704,7 +858,7 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
-                <div class="user-role">Super Admin</div>
+                <div class="user-role">Treasurer</div>
             </div>
         </div>
 
@@ -718,43 +872,19 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
             </div>
 
             <div class="nav-section">
-                <div class="nav-section-title">Resident Management</div>
-                <a href="resident-profiling.php" class="nav-item">
-                    <i class="fas fa-users"></i>
-                    Resident Profiling
+                <div class="nav-section-title">Finance</div>
+                <a href="expense.php" class="nav-item">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    Expense
                 </a>
-                
-            </div>
-
-            <div class="nav-section">
-                <div class="nav-section-title">Service Management</div>
-                <a href="community_service.php" class="nav-item">
-                    <i class="fas fa-hands-helping"></i>
-                    Community Service
-                </a>
-                <a href="announcements.php" class="nav-item">
-                    <i class="fas fa-bullhorn"></i>
-                    Announcements
-                </a>
-                <a href="complaints.php" class="nav-item">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    Complaints
-                    <?php if ($stats['pending_complaints'] > 0): ?>
-                        <span class="nav-badge"><?php echo $stats['pending_complaints']; ?></span>
-                    <?php endif; ?>
-                </a>
-                <a href="certificates.php" class="nav-item">
-                    <i class="fas fa-certificate"></i>
-                    Certificates
+                <a href="budgets.php" class="nav-item">
+                    <i class="fas fa-wallet"></i>
+                    Budgets
                 </a>
             </div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
-                <a href="account_management.php" class="nav-item">
-                    <i class="fas fa-user-cog"></i>
-                    Account Management
-                </a>
                 <a href="settings.php" class="nav-item">
                     <i class="fas fa-cog"></i>
                     Settings
@@ -763,7 +893,7 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
         </div>
 
         <div class="logout-section">
-            <form action="../../employee/logout.php" method="POST" id="logoutForm" style="width: 100%;">
+            <form action="../logout.php" method="POST" id="logoutForm" style="width: 100%;">
                 <button type="button" class="logout-btn" onclick="handleLogout()">
                     <i class="fas fa-sign-out-alt"></i>
                     Logout
@@ -795,130 +925,15 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
                 <p class="dashboard-subtitle">Here's what's happening in your barangay today</p>
             </div>
 
-            <!-- Statistics Overview -->
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #e74c3c;">
-                        <i class="fas fa-exclamation-circle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $stats['pending_complaints']; ?></h3>
-                        <p>Pending Complaints</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #f39c12;">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $stats['pending_appointments']; ?></h3>
-                        <p>Pending Appointments</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #27ae60;">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $stats['total_residents']; ?></h3>
-                        <p>Total Residents</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #3498db;">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $stats['total_complaints'] + $stats['total_appointments']; ?></h3>
-                        <p>Total Records</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Dashboard Layout -->
-            <div class="dashboard-layout">
-                <div class="left-section">
-                    <!-- Recent Activities -->
-                    <div class="recent-activities">
-                        <div class="recent-card">
-                            <div class="recent-header">
-                                <h3 class="recent-title">
-                                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 0.5rem;"></i>
-                                    Recent Complaints
-                                </h3>
-                            </div>
-                            <div class="recent-list">
-                                <?php if (!empty($recent_complaints_data)): ?>
-                                    <?php foreach ($recent_complaints_data as $complaint): ?>
-                                        <div class="recent-item">
-                                            <div class="recent-info">
-                                                <h4><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></h4>
-                                                <p>by <?php echo htmlspecialchars($complaint['full_name'] ?? 'Unknown'); ?> • <?php echo date('M j, Y', strtotime($complaint['created_at'])); ?></p>
-                                            </div>
-                                            <span class="status-badge status-<?php echo $complaint['status']; ?>">
-                                                <?php echo ucfirst($complaint['status']); ?>
-                                            </span>
-                                        </div>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <div class="recent-item">
-                                        <div class="recent-info">
-                                            <p style="text-align: center; color: #666;">No complaints found</p>
-                                        </div>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-
-                        <div class="recent-card">
-                            <div class="recent-header">
-                                <h3 class="recent-title">
-                                    <i class="fas fa-bullhorn" style="color: #f39c12; margin-right: 0.5rem;"></i>
-                                    Recent Announcements
-                                </h3>
-                            </div>
-                            <div class="recent-list">
-                                <?php if (!empty($recent_announcements_data)): ?>
-                                    <?php foreach ($recent_announcements_data as $announcement): ?>
-                                        <div class="recent-item">
-                                            <div class="recent-info">
-                                                <h4><?php echo htmlspecialchars($announcement['title']); ?></h4>
-                                                <p>by <?php echo htmlspecialchars($announcement['created_by_name'] ?? 'Unknown'); ?> • <?php echo date('M j, Y', strtotime($announcement['created_at'])); ?></p>
-                                            </div>
-                                            <span class="priority-badge priority-<?php echo $announcement['priority']; ?>">
-                                                <?php echo ucfirst($announcement['priority']); ?>
-                                            </span>
-                                        </div>
-                                    <?php endforeach; ?>
-                                <?php else: ?>
-                                    <div class="recent-item">
-                                        <div class="recent-info">
-                                            <p style="text-align: center; color: #666;">No announcements found</p>
-                                        </div>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Dashboard detail panel (dashboard within dashboard) -->
-                    <div id="dashboardDetail" class="recent-card" style="display:none; margin-top:1.5rem;">
-                        <div class="recent-header">
-                            <h3 class="recent-title" id="detailTitle">
-                                Details
-                            </h3>
-                            <button id="closeDetail" style="float:right; margin-top:-36px; background:#e74c3c; color:#fff; border:none; padding:6px 10px; border-radius:6px; cursor:pointer;">Close</button>
-                        </div>
-                        <div class="recent-list" id="detailList" style="padding:1rem; max-height:360px; overflow:auto;"></div>
-                    </div>
+            <!-- Update layout to position chart and calendar side by side -->
+            <div class="stats-overview" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; align-items: start;">
+                <div class="chart-container" style="position: relative; height: 600px;">
+                    <canvas id="mainExpenseChart"></canvas>
                 </div>
 
-                <!-- Right Section - Calendar -->
+                <!-- Calendar moved to right side -->
                 <div class="right-section">
-                    <div class="calendar-widget">
+                    <div class="calendar-widget" style="height: 600px;">
                         <div class="calendar-header">
                             <div class="calendar-title">
                                 <i class="fas fa-calendar-alt"></i>
@@ -948,6 +963,11 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Remove the old calendar section -->
+            <div class="dashboard-layout">
+                <!-- Empty or remove this section since calendar is moved -->
             </div>
         </div>
     </div>
@@ -1059,42 +1079,64 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
         document.addEventListener('DOMContentLoaded', function() {
             renderCalendar();
             
-            const currentPage = window.location.pathname.split('/').pop();
-            const navItems = document.querySelectorAll('.nav-item');
-            
-            navItems.forEach(item => {
-                const href = item.getAttribute('href');
-                if (href === currentPage) {
-                    item.classList.add('active');
+            // Single enhanced main chart
+            const mainCtx = document.getElementById('mainExpenseChart').getContext('2d');
+            new Chart(mainCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Available Budget', 'Monthly Expenses'],
+                    datasets: [{
+                        data: [
+                            <?php echo $stats['available_budget']; ?>,
+                            <?php echo $stats['monthly_expenses']; ?>
+                        ],
+                        backgroundColor: ['#27ae60', '#e74c3c'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    size: 16
+                                },
+                                padding: 25
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'Budget Overview',
+                            font: {
+                                size: 24,
+                                weight: 'bold'
+                            },
+                            padding: 25
+                        },
+                        tooltip: {
+                            bodyFont: {
+                                size: 16
+                            },
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    label += '₱' + parseFloat(context.raw).toLocaleString('en-PH', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    });
+                                    return label;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '60%'
                 }
-            });
-
-            // Wire stat cards to open dashboard detail
-            document.querySelectorAll('.stat-card').forEach((card, idx) => {
-                card.style.cursor = 'pointer';
-                card.addEventListener('click', function() {
-                    let title = '';
-                    let list = [];
-                    if (idx === 0) { // Pending Complaints
-                        title = 'Pending Complaints';
-                        list = recentComplaints.filter(c => c.status === 'pending');
-                    } else if (idx === 1) { // Pending Appointments
-                        title = 'Pending Appointments';
-                        list = recentAppointments.filter(a => a.status === 'pending');
-                    } else if (idx === 2) { // Recent Residents
-                        title = 'Recent Residents';
-                        list = recentResidents;
-                    } else { // Total Records / fallback
-                        title = 'Recent Announcements';
-                        list = recentAnnouncements;
-                    }
-
-                    showDetailPanel(title, list);
-                });
-            });
-
-            document.getElementById('closeDetail').addEventListener('click', function() {
-                document.getElementById('dashboardDetail').style.display = 'none';
             });
         });
 
@@ -1102,34 +1144,64 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
             document.getElementById('detailTitle').textContent = title;
             const container = document.getElementById('detailList');
             container.innerHTML = '';
+            
             if (!items || items.length === 0) {
                 container.innerHTML = '<p style="text-align:center;color:#666;padding:1rem;">No items to show</p>';
-            } else {
-                items.forEach(it => {
-                    const div = document.createElement('div');
-                    div.className = 'recent-item';
-                    let inner = '<div class="recent-info">';
-                    if (it.nature_of_complaint) {
-                        inner += '<h4>' + escapeHtml(it.nature_of_complaint) + '</h4>';
-                        inner += '<p>by ' + escapeHtml(it.full_name || 'Unknown') + ' • ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
-                    } else if (it.title) {
-                        inner += '<h4>' + escapeHtml(it.title) + '</h4>';
-                        inner += '<p>by ' + escapeHtml(it.created_by_name || it.created_by || 'Unknown') + ' • ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
-                    } else if (it.event_time || it.status) {
-                        inner += '<h4>' + escapeHtml(it.purpose || it.title || 'Appointment') + '</h4>';
-                        inner += '<p>with ' + escapeHtml(it.full_name || it.resident_name || 'Unknown') + ' • ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
-                    } else if (it.full_name) {
-                        inner += '<h4>' + escapeHtml(it.full_name) + '</h4>';
-                        inner += '<p>Joined ' + (it.created_at ? new Date(it.created_at).toLocaleDateString() : '') + '</p>';
-                    } else {
-                        inner += '<h4>Item</h4>';
-                        inner += '<p>Details unavailable</p>';
-                    }
-                    inner += '</div>';
-                    div.innerHTML = inner;
-                    container.appendChild(div);
-                });
+                return;
             }
+
+            const table = document.createElement('table');
+            table.className = 'detail-table';
+            
+            // Create table header based on type
+            const thead = document.createElement('thead');
+            let headerRow = '<tr>';
+            
+            if (title === 'Budgets') {
+                headerRow += `
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Amount</th>
+                    <th>Status</th>
+                `;
+            } else {
+                headerRow += `
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Amount</th>
+                `;
+            }
+            
+            headerRow += '</tr>';
+            thead.innerHTML = headerRow;
+            table.appendChild(thead);
+
+            // Create table body
+            const tbody = document.createElement('tbody');
+            items.forEach(it => {
+                const row = document.createElement('tr');
+                
+                if (title === 'Budgets') {
+                    row.innerHTML = `
+                        <td>${it.budget_date ? new Date(it.budget_date).toLocaleDateString() : ''}</td>
+                        <td>${escapeHtml(it.description)}</td>
+                        <td class="detail-amount">₱${Number(it.amount).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                        <td><span class="status-badge status-${it.status}">${escapeHtml(it.status)}</span></td>
+                    `;
+                } else {
+                    row.innerHTML = `
+                        <td>${it.date ? new Date(it.date).toLocaleDateString() : ''}</td>
+                        <td>${escapeHtml(it.category)}</td>
+                        <td class="detail-amount">₱${Number(it.amount).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
+                    `;
+                }
+                
+                tbody.appendChild(row);
+            });
+            
+            table.appendChild(tbody);
+            container.appendChild(table);
+            
             document.getElementById('dashboardDetail').style.display = 'block';
             document.getElementById('dashboardDetail').scrollIntoView({behavior:'smooth'});
         }
@@ -1145,6 +1217,50 @@ if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
         // Close sidebar when clicking on overlay
         document.getElementById('sidebarOverlay').addEventListener('click', function() {
             toggleSidebar();
+        });
+
+        // Update expense chart initialization with new data structure
+        const expenseCategories = <?php echo json_encode($expense_categories_data); ?>;
+
+        const ctx = document.getElementById('expenseChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: expenseCategories.map(cat => cat.category || 'Uncategorized'),
+                datasets: [{
+                    data: expenseCategories.map(cat => cat.total),
+                    backgroundColor: [
+                        '#2ecc71',
+                        '#3498db',
+                        '#e74c3c',
+                        '#f1c40f',
+                        '#9b59b6',
+                        '#1abc9c'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            boxWidth: 12,
+                            font: {
+                                size: 11
+                            }
+                        }
+                    },
+                    title: {
+                        display: true,
+                        text: 'Budget Items Distribution',
+                        font: {
+                            size: 14
+                        }
+                    }
+                },
+                cutout: '70%'
+            }
         });
     </script>
 </body>

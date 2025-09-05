@@ -169,6 +169,25 @@ $captain_count_query = "SELECT COUNT(*) as count FROM users WHERE role = 'captai
 $captain_count = mysqli_fetch_assoc(mysqli_query($connection, $captain_count_query))['count'];
 $secretary_count_query = "SELECT COUNT(*) as count FROM users WHERE role = 'secretary'";
 $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count_query))['count'];
+
+// Add treasurer count
+$treasurer_count_query = "SELECT COUNT(*) as count FROM users WHERE role = 'treasurer'";
+$treasurer_count = mysqli_fetch_assoc(mysqli_query($connection, $treasurer_count_query))['count'];
+
+// Add role labels and helper (normalize DB role -> css key + display label)
+$role_labels = [
+    'super_admin' => 'Super Admin',
+    'captain'     => 'Captain',
+    'secretary'   => 'Secretary',
+    'treasurer'   => 'Treasurer'
+];
+
+function normalize_role($raw) {
+    $key = trim(strtolower($raw ?? ''));
+    $key = str_replace(' ', '_', $key);
+    $key = preg_replace('/[^a-z0-9_]/', '', $key);
+    return $key === '' ? 'unknown' : $key;
+}
 ?>
 
 <!DOCTYPE html>
@@ -551,6 +570,22 @@ $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count
 			color: #7b1fa2;
 		}
 
+		/* Treaurer badge styling */
+		.role-treasurer {
+			background: #e8f5e9;
+			color: #2e7d32;
+		}
+
+		/* Super admin and fallback styling */
+		.role-super_admin {
+			background: #eaf2ff;
+			color: #1f6feb;
+		}
+		.role-unknown {
+			background: #f0f0f0;
+			color: #333;
+		}
+
 		.status-badge {
 			padding: 0.25rem 0.75rem;
 			border-radius: 15px;
@@ -921,13 +956,13 @@ $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count
 		</div>
 
 		<div class="logout-section">
-			<form action="../logout.php" method="POST" id="logoutForm" style="width: 100%;">
-				<button type="button" class="logout-btn" onclick="handleLogout()">
-					<i class="fas fa-sign-out-alt"></i>
-					Logout
-				</button>
-			</form>
-		</div>
+            <form action="../../employee/logout.php" method="POST" id="logoutForm" style="width: 100%;">
+                <button type="button" class="logout-btn" onclick="handleLogout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Logout
+                </button>
+            </form>
+        </div>
 	</nav>
 
 	<!-- Sidebar Overlay for Mobile -->
@@ -1001,12 +1036,12 @@ $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count
 				</div>
 				
 				<div class="stat-card">
-					<div class="stat-icon" style="color: #f39c12;">
-						<i class="fas fa-user-tie"></i>
+					<div class="stat-icon" style="color: #9c27b0;">
+						<i class="fas fa-coins"></i>
 					</div>
 					<div class="stat-content">
-						<h3><?php echo $secretary_count; ?></h3>
-						<p>Secretaries</p>
+						<h3><?php echo $treasurer_count; ?></h3>
+						<p>Treasurers</p>
 					</div>
 				</div>
 			</div>
@@ -1048,6 +1083,9 @@ $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count
 						<?php 
 						mysqli_data_seek($users_result, 0);
 						while ($user = mysqli_fetch_assoc($users_result)): 
+							// normalize role for css class and label
+							$_role_key = normalize_role($user['role']);
+							$_role_label = $role_labels[$_role_key] ?? (strlen($user['role']) ? ucwords(str_replace('_',' ',$_role_key)) : 'N/A');
 						?>
 							<tr>
 								<td>
@@ -1062,8 +1100,8 @@ $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count
 									</div>
 								</td>
 								<td>
-									<span class="role-badge role-<?php echo $user['role']; ?>">
-										<?php echo ucfirst($user['role']); ?>
+									<span class="role-badge role-<?php echo htmlspecialchars($_role_key); ?>">
+										<?php echo htmlspecialchars($_role_label); ?>
 									</span>
 								</td>
 								<td>
@@ -1132,6 +1170,7 @@ $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count
 							<option value="super_admin">Super admin</option>
 							<option value="captain">Captain</option>
 							<option value="secretary">Secretary</option>
+							<option value="treasurer">Treasurer</option>
 						</select>
 					</div>
 					<div class="form-group">
@@ -1210,6 +1249,7 @@ $secretary_count = mysqli_fetch_assoc(mysqli_query($connection, $secretary_count
 							<option value="super_admin">Super admin</option>
 							<option value="captain">Captain</option>
 							<option value="secretary">Secretary</option>
+							<option value="treasurer">Treasurer</option>
 						</select>
 					</div>
 					<div class="form-group">

@@ -1285,13 +1285,13 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
 		</div>
 
 		<div class="logout-section">
-			<form action="../logout.php" method="POST" id="logoutForm" style="width: 100%;">
-				<button type="button" class="logout-btn" onclick="handleLogout()">
-					<i class="fas fa-sign-out-alt"></i>
-					Logout
-				</button>
-			</form>
-		</div>
+            <form action="../../employee/logout.php" method="POST" id="logoutForm" style="width: 100%;">
+                <button type="button" class="logout-btn" onclick="handleLogout()">
+                    <i class="fas fa-sign-out-alt"></i>
+                    Logout
+                </button>
+            </form>
+        </div>
 	</nav>
 
 	<!-- Sidebar Overlay for Mobile -->

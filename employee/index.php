@@ -79,7 +79,7 @@ if (isset($_POST['signin'])) {
                 } elseif ($user['role'] == 'secretary') {
                     header("Location: sec/dashboard.php");
                 } else {
-                    header("Location: dashboard.php");
+                    header("Location: treasurer/dashboard.php");
                 }
                 exit();
             } else {

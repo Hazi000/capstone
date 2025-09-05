@@ -1051,7 +1051,7 @@ if (isset($_GET['tab'])) {
         </div>
 
         <div class="logout-section">
-            <form action="../logout.php" method="POST" id="logoutForm" style="width: 100%;">
+            <form action="../../employee/logout.php" method="POST" id="logoutForm" style="width: 100%;">
                 <button type="button" class="logout-btn" onclick="handleLogout()">
                     <i class="fas fa-sign-out-alt"></i>
                     Logout
