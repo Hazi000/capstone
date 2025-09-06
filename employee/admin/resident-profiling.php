@@ -1390,7 +1390,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 		</div>
 
 		<div class="content-area">
-			<!-- Alert Messages -->
+			<!-- Alert Messages -->         
 			<?php if (isset($success_message)): ?>
 				<div class="alert alert-success">
 					<i class="fas fa-check-circle"></i>
