@@ -211,7 +211,11 @@ if ($monthly_expenses_detail_result && mysqli_num_rows($monthly_expenses_detail_
 }
 
 // Fetch all expenses for total expenses detail panel
-$total_expenses_detail_query = "SELECT category, amount, date, description FROM expenses WHERE YEAR(date) = $current_year ORDER BY date DESC";
+$total_expenses_detail_query = "SELECT e.*, b.item as category, e.created_at as date 
+                               FROM expenses e 
+                               LEFT JOIN budgets b ON e.budget_id = b.id 
+                               WHERE YEAR(e.created_at) = $current_year 
+                               ORDER BY e.created_at DESC";
 $total_expenses_detail_result = mysqli_query($connection, $total_expenses_detail_query);
 $total_expenses_data = [];
 if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_result) > 0) {
@@ -230,6 +234,9 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- Add Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Add SweetAlert2 CSS and JS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1064,9 +1071,20 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
         }
 
         function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                document.getElementById('logoutForm').submit();
-            }
+            Swal.fire({
+                title: 'Logout Confirmation',
+                text: 'Are you sure you want to logout?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, logout',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('logoutForm').submit();
+                }
+            });
         }
 
         // Data exported from PHP
@@ -1263,5 +1281,5 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
             }
         });
     </script>
-</body>
-</html>
+
+</body></html>

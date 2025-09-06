@@ -266,6 +266,8 @@ if (isset($_GET['tab'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Barangay Certificates - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Add SweetAlert CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
             margin: 0;
@@ -1503,9 +1505,20 @@ if (isset($_GET['tab'])) {
         }
 
         function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                document.getElementById('logoutForm').submit();
-            }
+            Swal.fire({
+                title: 'Logout Confirmation',
+                text: "Are you sure you want to logout?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Yes, logout',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('logoutForm').submit();
+                }
+            });
         }
 
         function showApproveModal(requestId, residentName, certType) {

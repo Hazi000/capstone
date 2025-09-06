@@ -325,6 +325,10 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 	<!-- Face API -->
 	<script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 	
+	<!-- Add SweetAlert2 CSS and JS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
+	
 	<style>
 		* {
 			margin: 0;
@@ -1944,6 +1948,8 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 				}
 			}
 
+			
+
 			loadingOverlay.classList.add('show');
 			console.log('Starting to load models...');
 
@@ -1999,9 +2005,20 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 		}
 
 		function handleLogout() {
-			if (confirm('Are you sure you want to logout?')) {
-				document.getElementById('logoutForm').submit();
-			}
+			Swal.fire({
+				title: 'Logout Confirmation',
+				text: 'Are you sure you want to logout?',
+				icon: 'question',
+				showCancelButton: true,
+				confirmButtonText: 'Yes, logout',
+				cancelButtonText: 'Cancel',
+				confirmButtonColor: '#d33',
+				cancelButtonColor: '#3085d6',
+			}).then((result) => {
+				if (result.isConfirmed) {
+					document.getElementById('logoutForm').submit();
+				}
+			});
 		}
 
 		// Enhanced face detection

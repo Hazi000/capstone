@@ -214,6 +214,8 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="../../css/community-service.css" rel="stylesheet">
     <script src="../../js/community-service.js" defer></script>
+    <!-- Add SweetAlert CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
             margin: 0;
@@ -1858,9 +1860,20 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
 
 		// Handle logout
 		function handleLogout() {
-			if (confirm('Are you sure you want to logout?')) {
-				document.getElementById('logoutForm').submit();
-			}
+			Swal.fire({
+                title: 'Logout Confirmation',
+                text: "Are you sure you want to logout?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Yes, logout',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('logoutForm').submit();
+                }
+            });
 		}
 
 		// Approve volunteer (POST form submit)

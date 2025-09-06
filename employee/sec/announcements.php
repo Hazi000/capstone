@@ -164,6 +164,8 @@ if (isset($_GET['edit'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Announcements - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Add SweetAlert CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
             margin: 0;
@@ -498,237 +500,6 @@ if (isset($_GET['edit'])) {
         .form-control {
             height: 38px;
             padding: 0.375rem 0.75rem;
-            font-size: 0.875rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            background: #f8fafc;
-        }
-
-        .form-control::placeholder {
-            color: #94a3b8;
-            font-size: 0.875rem;
-        }
-
-        .btn-filter {
-            height: 38px;
-            padding: 0 1rem;
-            font-size: 0.875rem;
-            background: #3498db;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        /* Fixed logout section positioning */
-        .logout-section {
-            padding: 1rem;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            flex-shrink: 0;
-            margin-top: auto;
-        }
-
-        .logout-btn {
-            width: 100%;
-            background: rgba(231, 76, 60, 0.2);
-            color: white;
-            border: 1px solid rgba(231, 76, 60, 0.5);
-            padding: 0.75rem;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-        }
-
-        .logout-btn:hover {
-            background: rgba(231, 76, 60, 0.3);
-            border-color: #e74c3c;
-            transform: translateY(-1px);
-        }
-
-        /* Main Content */
-        .main-content {
-            margin-left: 280px;
-            min-height: 100vh;
-            transition: margin-left 0.3s ease;
-        }
-
-        .top-bar {
-            background: white;
-            padding: 1rem 2rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .menu-toggle {
-            display: none;
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            color: #333;
-            cursor: pointer;
-        }
-
-        .page-title {
-            font-size: 1.5rem;
-            color: #333;
-            font-weight: 600;
-        }
-
-        .content-area {
-            padding: 2rem;
-        }
-
-        /* Alert Messages */
-        .alert {
-            padding: 1rem 1.5rem;
-            margin-bottom: 1.5rem;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            animation: slideIn 0.3s ease;
-        }
-
-        @keyframes slideIn {
-            from {
-                transform: translateY(-20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-
-        .alert-success {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .alert-error {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-
-        .alert i {
-            margin-right: 0.75rem;
-            font-size: 1.2rem;
-        }
-
-        .alert-close {
-            margin-left: auto;
-            background: none;
-            border: none;
-            font-size: 1.2rem;
-            cursor: pointer;
-            color: inherit;
-            opacity: 0.7;
-            transition: opacity 0.3s ease;
-        }
-
-        .alert-close:hover {
-            opacity: 1;
-        }
-
-        /* Action Header */
-        .action-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-
-        .action-title {
-            font-size: 2rem;
-            color: #333;
-        }
-
-        .action-buttons {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
-
-        .btn {
-            padding: 0.75rem 1.5rem;
-            border: none;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            text-decoration: none;
-        }
-
-        .btn-primary {
-            background: #3498db;
-            color: white;
-        }
-
-        .btn-primary:hover {
-            background: #2980b9;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
-        }
-
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #5a6268;
-        }
-
-        /* Updated Filter Section Styles */
-        .filter-section {
-            background: white;
-            padding: 0.5rem;
-            border-radius: 6px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            margin-top: 0.5rem;
-            margin-bottom: 1rem;
-            width: fit-content;
-        }
-
-        .filter-row {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
-
-        .filter-group {
-            min-width: 120px;
-            margin: 0;
-        }
-
-        .filter-group:first-child {
-            min-width: 180px;
-        }
-
-        .filter-group label {
-            display: none;
-        }
-
-        .form-control {
-            padding: 0.375rem 0.75rem;
-            height: 38px;
             font-size: 0.875rem;
             border: 1px solid #e2e8f0;
             border-radius: 6px;
@@ -2110,9 +1881,20 @@ if (isset($_GET['edit'])) {
 
         // Handle logout
         function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                document.getElementById('logoutForm').submit();
-            }
+            Swal.fire({
+                title: 'Logout Confirmation',
+                text: "Are you sure you want to logout?",
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
+                confirmButtonText: 'Yes, logout',
+                cancelButtonText: 'Cancel'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('logoutForm').submit();
+                }
+            });
         }
 
         // Toggle event details section

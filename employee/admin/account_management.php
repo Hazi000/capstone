@@ -888,6 +888,8 @@ function normalize_role($raw) {
 		.loading-overlay.show { display: flex; pointer-events: auto; }
 		.modal { z-index: 4000; }
 	</style>
+	<!-- Add SweetAlert CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 </head>
 
 <body>
@@ -1301,9 +1303,20 @@ function normalize_role($raw) {
 
 		// Logout confirmation
 		function handleLogout() {
-			if (confirm('Are you sure you want to logout?')) {
-				document.getElementById('logoutForm').submit();
-			}
+			Swal.fire({
+				title: 'Logout Confirmation',
+				text: "Are you sure you want to logout?",
+				icon: 'question',
+				showCancelButton: true,
+				confirmButtonColor: '#3085d6',
+				cancelButtonColor: '#d33',
+				confirmButtonText: 'Yes, logout',
+				cancelButtonText: 'Cancel'
+			}).then((result) => {
+				if (result.isConfirmed) {
+					document.getElementById('logoutForm').submit();
+				}
+			});
 		}
 
 		// Modal functions

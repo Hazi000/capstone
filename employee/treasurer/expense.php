@@ -18,6 +18,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $amount = floatval($_POST['amount']);
                 $budget_id = intval($_POST['budget_id']);
                 
+                // Check available budget before adding expense
+                $budget_check_query = "SELECT b.amount - COALESCE(SUM(e.amount), 0) as available 
+                                     FROM budgets b 
+                                     LEFT JOIN expenses e ON b.id = e.budget_id 
+                                     WHERE b.id = $budget_id 
+                                     GROUP BY b.id, b.amount";
+                $budget_result = mysqli_query($connection, $budget_check_query);
+                $budget_data = mysqli_fetch_assoc($budget_result);
+                
+                if (!$budget_data) {
+                    $_SESSION['error'] = "Invalid budget item selected.";
+                    header("Location: expense.php");
+                    exit();
+                }
+
+                if ($amount > $budget_data['available']) {
+                    $_SESSION['error'] = "Amount exceeds available budget. Available: ₱" . number_format($budget_data['available'], 2);
+                    header("Location: expense.php");
+                    exit();
+                }
+                
                 // Use current date for created_at
                 $current_date = date('Y-m-d H:i:s');
                 
@@ -154,6 +175,9 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <!-- Add SweetAlert2 CSS and JS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
 
     <style>
         /* Reuse exact dashboard styles */
@@ -805,6 +829,24 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
         .select2-results__option--highlighted {
             background-color: #3498db !important;
         }
+
+        /* Add this new CSS rule for the error state */
+        .form-group input.error {
+            border-color: #e74c3c;
+            background-color: #fff6f6;
+        }
+
+        /* Add these new styles */
+        .form-group .amount-indicator {
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            display: none;
+        }
+
+        .form-group .amount-exceeded {
+            color: #e74c3c;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -996,16 +1038,19 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
                             </label>
                             <input type="number" name="amount" id="amount" step="0.01" required 
                                 placeholder="Enter amount">
+                            <div class="amount-indicator" id="amountIndicator">Amount exceeded available budget!</div>
                         </div>
                         
                         <div class="form-group">
                             <label for="budget_date">
                                 <i class="fas fa-calendar"></i> Date
                             </label>
-                            <input type="date" name="budget_date" id="budget_date" 
-                                value="<?php echo date('Y-m-d'); ?>" 
-                                readonly 
-                                style="background-color: #f8f9fa; cursor: not-allowed;">
+                            <input type="date" 
+                                   name="budget_date" 
+                                   id="budget_date" 
+                                   value="<?php echo date('Y-m-d'); ?>" 
+                                   readonly 
+                                   style="background-color: #f8f9fa; cursor: not-allowed;">
                         </div>
                         
                         <button type="submit" class="action-btn">
@@ -1039,19 +1084,32 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
         }
 
         function showAddModal() {
-            const modal = document.getElementById('budgetModal');
-            document.getElementById('modalTitle').textContent = 'Add Expense';
-            document.getElementById('formAction').value = 'add';
-            document.getElementById('budgetForm').reset();
-            
-            // Set current date and ensure it's read-only
-            const today = new Date().toISOString().split('T')[0];
-            const dateInput = document.getElementById('budget_date');
-            dateInput.value = today;
-            dateInput.setAttribute('readonly', true);
-            
-            modal.classList.add('active');
-            document.body.style.overflow = 'hidden';
+            Swal.fire({
+                title: 'Add New Expense',
+                text: 'Do you want to add a new expense record?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, add new',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#27ae60',
+                cancelButtonColor: '#3085d6',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const modal = document.getElementById('budgetModal');
+                    document.getElementById('modalTitle').textContent = 'Add Expense';
+                    document.getElementById('formAction').value = 'add';
+                    document.getElementById('budgetForm').reset();
+                    
+                    // Set current date and ensure it's read-only
+                    const today = new Date().toISOString().split('T')[0];
+                    const dateInput = document.getElementById('budget_date');
+                    dateInput.value = today;
+                    dateInput.setAttribute('readonly', true);
+                    
+                    modal.classList.add('active');
+                    document.body.style.overflow = 'hidden';
+                }
+            });
         }
 
         function closeModal() {
@@ -1061,9 +1119,20 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
         }
 
         function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                document.getElementById('logoutForm').submit();
-            }
+            Swal.fire({
+                title: 'Logout Confirmation',
+                text: 'Are you sure you want to logout?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, logout',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('logoutForm').submit();
+                }
+            });
         }
 
         // Modal event listeners
@@ -1120,6 +1189,53 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
                     closeModal();
                 }
             });
+        });
+
+        // Add this function to check budget before form submission
+        function validateBudgetAmount() {
+            const amountInput = document.getElementById('amount');
+            const amountIndicator = document.getElementById('amountIndicator');
+            const budgetSelect = document.getElementById('budget_id');
+            const selectedOption = budgetSelect.options[budgetSelect.selectedIndex];
+            
+            if (!selectedOption || !selectedOption.dataset.available) {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Please select a budget item first',
+                    icon: 'error',
+                    confirmButtonColor: '#3085d6'
+                });
+                return false;
+            }
+
+            const amount = parseFloat(amountInput.value);
+            const availableBudget = parseFloat(selectedOption.dataset.available);
+
+            if (amount > availableBudget) {
+                amountInput.classList.add('error');
+                amountIndicator.classList.add('amount-exceeded');
+                amountIndicator.style.display = 'block';
+                return false;
+            } else {
+                amountInput.classList.remove('error');
+                amountIndicator.classList.remove('amount-exceeded');
+                amountIndicator.style.display = 'none';
+                return true;
+            }
+        }
+
+        // Add event listener for amount input to check in real-time
+        document.getElementById('amount').addEventListener('input', function() {
+            validateBudgetAmount();
+        });
+
+        // Update the form submission handler
+        document.getElementById('budgetForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            if (validateBudgetAmount()) {
+                this.submit();
+            }
         });
     </script>
 </body>

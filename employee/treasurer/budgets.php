@@ -96,6 +96,9 @@ if ($stats_result && $row = mysqli_fetch_assoc($stats_result)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Budget Management - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Add SweetAlert2 CSS and JS -->
+    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
     <style>
         /* Reuse exact dashboard styles */
         * {
@@ -871,7 +874,12 @@ if ($stats_result && $row = mysqli_fetch_assoc($stats_result)) {
 
                         <div class="form-group">
                             <label for="budget_date"><i class="fas fa-calendar"></i> Date</label>
-                            <input type="date" name="budget_date" id="budget_date" value="<?php echo date('Y-m-d'); ?>" required>
+                            <input type="date" 
+                                   name="budget_date" 
+                                   id="budget_date" 
+                                   value="<?php echo date('Y-m-d'); ?>" 
+                                   readonly 
+                                   style="background-color: #f8f9fa; cursor: not-allowed;">
                         </div>
 
                         <button type="submit" class="action-btn">
@@ -927,6 +935,23 @@ if ($stats_result && $row = mysqli_fetch_assoc($stats_result)) {
                 return false;
             }
             return true; // allow form submission
+        }
+
+        function handleLogout() {
+            Swal.fire({
+                title: 'Logout Confirmation',
+                text: 'Are you sure you want to logout?',
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Yes, logout',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#3085d6',
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    document.getElementById('logoutForm').submit();
+                }
+            });
         }
 
         // Modal event listeners
