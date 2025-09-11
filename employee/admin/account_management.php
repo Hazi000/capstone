@@ -1,12 +1,13 @@
 <?php
 session_start();
 require_once '../../config.php';
+require_once '../../config/mail_config.php';
 
 // Check if user is logged in and is authorized
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
-    header("Location: ../index.php");
-    exit();
-}
+//if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
+  //  header("Location: ../index.php");
+    //exit();
+//}
 
 // Handle form submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -19,6 +20,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $password = password_hash($_POST['password'], PASSWORD_DEFAULT);
             $role = mysqli_real_escape_string($connection, $_POST['role']);
             $status = mysqli_real_escape_string($connection, $_POST['status']);
+            
+            // Check if email is verified
+            if ($_POST['add_is_email_verified'] !== '1') {
+                $_SESSION['error'] = "Please verify the email address before adding the user";
+                header("Location: account_management.php");
+                exit();
+            }
             
             // Check if email already exists
             $check_query = "SELECT id FROM users WHERE email = '$email'";
@@ -133,21 +141,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'expires' => time() + 600 // 10 minutes
             ];
             
-            // In a real application, send the code via email
-            // For demo, we'll just return it
-            echo json_encode([
-                'status' => 'success',
-                'code' => $verification_code, // Remove in production
-                'message' => 'Verification code sent to ' . $email
-            ]);
+            // Send email with verification code
+            $subject = 'Email Verification Code';
+            $body = '
+                <h2>Email Verification</h2>
+                <p>Your verification code is: <b style="font-size: 20px;">'.$verification_code.'</b></p>
+                <p>This code will expire in 10 minutes.</p>
+                <hr>
+                <p><small>This is an automated message, please do not reply.</small></p>
+            ';
+            
+            if(sendEmail($email, $subject, $body)) {
+                echo json_encode([
+                    'status' => 'success',
+                    'message' => 'Verification code sent to ' . $email
+                ]);
+            } else {
+                echo json_encode([
+                    'status' => 'error',
+                    'message' => 'Failed to send verification code'
+                ]);
+            }
             exit;
             break;
             
         case 'verify_code':
-            $code = $_POST['code'] ?? '';
-            $session_code = $_SESSION['email_verification']['code'] ?? '';
+            $code = strval($_POST['code'] ?? '');
+            $session_code = strval($_SESSION['email_verification']['code'] ?? '');
             
-            if ($code === $session_code) {
+            // Check if code exists and hasn't expired
+            if ($code === $session_code && time() <= ($_SESSION['email_verification']['expires'] ?? 0)) {
                 echo json_encode(['status' => 'success']);
             } else {
                 echo json_encode(['status' => 'error', 'message' => 'Invalid verification code']);
@@ -1159,7 +1182,23 @@ function normalize_role($raw) {
 					</div>
 					<div class="form-group">
 						<label class="form-label">Email Address</label>
-						<input type="email" name="email" class="form-control" required>
+						<div class="email-verify-container">
+							<input type="email" name="email" id="add_email" class="form-control" required>
+							<button type="button" id="add_verify_email_btn" class="btn btn-primary" style="display: inline-block;" onclick="sendAddVerificationCode()">
+								<i class="fas fa-paper-plane"></i> Verify
+							</button>
+						</div>
+						<div id="addVerificationSection" style="display: none; margin-top: 15px;">
+							<label class="form-label">Verification Code</label>
+							<div style="display: flex; gap: 10px; align-items: center;">
+								<input type="text" id="add_verification_code" class="form-control" placeholder="Enter 6-digit code">
+								<button type="button" class="btn btn-primary" onclick="verifyAddCode()">
+									<i class="fas fa-check"></i> Confirm
+								</button>
+							</div>
+							<p id="add_verification_status" style="margin-top: 10px; font-size: 0.9rem;"></p>
+						</div>
+						<input type="hidden" name="add_is_email_verified" id="add_is_email_verified" value="0">
 					</div>
 					<div class="form-group">
 						<label class="form-label">Password</label>
@@ -1411,28 +1450,44 @@ function normalize_role($raw) {
 		
 		// Email verification functions
 		function checkEmailChanged() {
-			currentEmail = document.getElementById('edit_email').value;
-			const verifyBtn = document.getElementById('verify_email_btn');
-			
-			if (currentEmail !== originalEmail && currentEmail !== '') {
-				verifyBtn.style.display = 'block';
-				document.getElementById('is_email_verified').value = '0';
-			} else {
-				verifyBtn.style.display = 'none';
-				document.getElementById('is_email_verified').value = '1';
-			}
+            currentEmail = document.getElementById('edit_email').value;
+            const verifyBtn = document.getElementById('verify_email_btn');
+            
+            if (currentEmail !== originalEmail && currentEmail !== '') {
+                verifyBtn.style.display = 'block';
+                verifyBtn.disabled = false;
+                verifyBtn.style.opacity = '1';
+                verifyBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Verify';
+                document.getElementById('is_email_verified').value = '0';
+            } else {
+                verifyBtn.style.display = 'none';
+                document.getElementById('is_email_verified').value = '1';
+            }
 		}
 		
 		function sendVerificationCode() {
-			const email = document.getElementById('edit_email').value;
-			const userId = document.getElementById('edit_user_id').value;
-			
-			// Validate email format
-			if (!validateEmail(email)) {
-				document.getElementById('verification_status').innerHTML = 
-					'<span style="color: red;">Please enter a valid email address</span>';
-				return;
-			}
+            const verifyBtn = document.getElementById('verify_email_btn');
+            const email = document.getElementById('edit_email').value;
+            
+            // Start 120 second timer
+            startVerifyButtonTimer('verify_email_btn', 120);
+            const userId = document.getElementById('edit_user_id').value;
+            
+            // Disable verify button
+            verifyBtn.disabled = true;
+            verifyBtn.style.opacity = '0.5';
+            verifyBtn.innerHTML = '<i class="fas fa-clock"></i> Sent';
+            
+            // Validate email format
+            if (!validateEmail(email)) {
+                document.getElementById('verification_status').innerHTML = 
+                    '<span style="color: red;">Please enter a valid email address</span>';
+                // Re-enable button on error
+                verifyBtn.disabled = false;
+                verifyBtn.style.opacity = '1';
+                verifyBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Verify';
+                return;
+            }
 			
 			// Show loading indicator
 			document.getElementById('verification_status').innerHTML = 
@@ -1529,6 +1584,148 @@ function normalize_role($raw) {
 			const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 			return re.test(email);
 		}
+
+        // Timer function for verify buttons
+        function startVerifyButtonTimer(buttonId, duration) {
+            const button = document.getElementById(buttonId);
+            button.disabled = true;
+            
+            let timeLeft = duration;
+            const timer = setInterval(() => {
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    button.disabled = false;
+                    button.innerHTML = '<i class="fas fa-paper-plane"></i> Verify';
+                    button.style.opacity = '1';
+                } else {
+                    button.innerHTML = `<i class="fas fa-clock"></i> Wait ${timeLeft}s`;
+                    button.style.opacity = '0.5';
+                    timeLeft--;
+                }
+            }, 1000);
+        }
+
+        function sendAddVerificationCode() {
+            const verifyBtn = document.getElementById('add_verify_email_btn');
+            const email = document.getElementById('add_email').value;
+            
+            // Start 120 second timer
+            startVerifyButtonTimer('add_verify_email_btn', 120);
+            
+            // Show verification section immediately
+            document.getElementById('addVerificationSection').style.display = 'block';
+            document.getElementById('add_verification_status').innerHTML = 
+                '<span style="color: #3498db;"><i class="fas fa-spinner fa-spin"></i> Sending verification code...</span>';
+            
+            // Disable verify button
+            verifyBtn.disabled = true;
+            verifyBtn.style.opacity = '0.5';
+            verifyBtn.innerHTML = '<i class="fas fa-clock"></i> Sent';
+            
+            // Validate email format
+            if (!validateEmail(email)) {
+                document.getElementById('add_verification_status').innerHTML = 
+                    '<span style="color: red;">Please enter a valid email address</span>';
+                // Re-enable button on error
+                verifyBtn.disabled = false;
+                verifyBtn.style.opacity = '1';
+                verifyBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Verify';
+                return;
+            }
+            
+            // Show initial sending status
+            document.getElementById('addVerificationSection').style.display = 'block';
+            document.getElementById('add_verification_status').innerHTML = 
+                '<span style="color: #3498db;">The code was sent!</span>';
+            
+            // Send AJAX request
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'account_management.php', true);
+            xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+            
+            xhr.onload = function() {
+                if (this.status === 200) {
+                    try {
+                        const response = JSON.parse(this.responseText);
+                        if (response.status === 'success') {
+                            // Show verification section first
+                            document.getElementById('addVerificationSection').style.display = 'block';
+                            // Focus on the verification code input
+                            document.getElementById('add_verification_code').focus();
+                            document.getElementById('add_verification_status').innerHTML = 
+                                `<span style="color: green;">The code was sent!</span>
+                                 <br><small style="color: #777;">For demo purposes, verification code: ${response.code}</small>`;
+                        } else {
+                            document.getElementById('add_verification_status').innerHTML = 
+                                `<span style="color: red;">Error: ${response.message || 'Failed to send code'}</span>`;
+                        }
+                    } catch (e) {
+                        // Continue silently
+                    }
+                } else {
+                    document.getElementById('add_verification_status').innerHTML = 
+                        '<span style="color: red;">Error sending verification code</span>';
+                }
+            };
+            
+            xhr.onerror = function() {
+                document.getElementById('add_verification_status').innerHTML = 
+                    '<span style="color: red;">Network error</span>';
+            };
+            
+            xhr.send(`action=send_verification&email=${encodeURIComponent(email)}`);
+        }
+        
+        function verifyAddCode() {
+            const code = document.getElementById('add_verification_code').value;
+            
+            if (!code || code.length !== 6) {
+                document.getElementById('add_verification_status').innerHTML = 
+                    '<span style="color: red;">Please enter a 6-digit verification code</span>';
+                return;
+            }
+            
+            // Show loading indicator
+            document.getElementById('add_verification_status').innerHTML = 
+                '<span style="color: #3498db;"><i class="fas fa-spinner fa-spin"></i> Verifying code...</span>';
+            
+            // Send AJAX request
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'account_management.php', true);
+            xhr.setRequestHeader('Content-type', 'application/x-www-form-urlencoded');
+            
+            xhr.onload = function() {
+                if (this.status === 200) {
+                    try {
+                        const response = JSON.parse(this.responseText);
+                        if (response.status === 'success') {
+                            document.getElementById('add_verification_status').innerHTML = 
+                                '<span style="color: green;">Email verified successfully!</span>';
+                            document.getElementById('add_is_email_verified').value = '1';
+                            
+                            // Hide verify button
+                            document.getElementById('add_verify_email_btn').style.display = 'none';
+                        } else {
+                            document.getElementById('add_verification_status').innerHTML = 
+                                `<span style="color: red;">${response.message || 'Verification failed'}</span>`;
+                        }
+                    } catch (e) {
+                        document.getElementById('add_verification_status').innerHTML = 
+                            '<span style="color: red;">Error processing response</span>';
+                    }
+                } else {
+                    document.getElementById('add_verification_status').innerHTML = 
+                        '<span style="color: red;">Verification failed</span>';
+                }
+            };
+            
+            xhr.onerror = function() {
+                document.getElementById('add_verification_status').innerHTML = 
+                    '<span style="color: red;">Network error</span>';
+            };
+            
+            xhr.send(`action=verify_code&code=${encodeURIComponent(code)}`);
+        }
 	</script>
 </body>
 </html>

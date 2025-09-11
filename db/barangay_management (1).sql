@@ -3,9 +3,9 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Aug 20, 2025 at 04:25 AM
+-- Generation Time: Sep 11, 2025 at 05:23 AM
 -- Server version: 10.4.32-MariaDB
--- PHP Version: 8.0.30
+-- PHP Version: 8.2.12
 
 SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
 START TRANSACTION;
@@ -51,9 +51,15 @@ CREATE TABLE `announcements` (
 
 INSERT INTO `announcements` (`id`, `title`, `content`, `priority`, `announcement_type`, `status`, `event_date`, `event_time`, `location`, `expiry_date`, `needs_volunteers`, `max_volunteers`, `created_by`, `created_at`, `updated_at`) VALUES
 (7, 'dasbjdba', 'djabdaj', 'medium', 'event', 'expired', '0000-00-00', '00:00:00', '', '0000-00-00', 0, NULL, 2, '2025-07-24 07:28:50', '2025-07-24 07:28:50'),
-(8, 'dakdna', 'ndsjada', 'medium', 'event', 'active', '2025-07-26', '03:29:00', 'adada', '2025-08-25', 1, 2, 2, '2025-07-24 07:29:41', '2025-07-24 07:31:11'),
-(10, 'dasdja', 'dbsadah', 'medium', 'event', 'active', '2025-08-28', '09:00:00', 'dada', '2025-08-30', 1, 10, 2, '2025-08-19 05:20:37', '2025-08-19 05:20:37'),
-(11, 'kfkkkj', 'nsadaj', 'low', 'event', 'active', '2025-08-29', '09:00:00', 'kdnsakd', '2026-05-05', 1, 9, 2, '2025-08-19 05:25:10', '2025-08-19 05:25:10');
+(8, 'dakdna', 'ndsjada', 'medium', 'event', 'expired', '2025-07-26', '03:29:00', 'adada', '2025-08-25', 1, 2, 2, '2025-07-24 07:29:41', '2025-09-03 03:05:59'),
+(10, 'dasdja', 'dbsadah', 'medium', 'event', 'expired', '2025-08-28', '09:00:00', 'dada', '2025-08-30', 1, 10, 2, '2025-08-19 05:20:37', '2025-09-03 03:05:59'),
+(11, 'kfkkkj', 'nsadaj', 'low', 'event', 'active', '2025-08-29', '09:00:00', 'kdnsakd', '2026-05-05', 1, 9, 2, '2025-08-19 05:25:10', '2025-08-19 05:25:10'),
+(12, 'vbdhsvah', 'bfhabh', 'medium', 'event', 'active', '2025-09-19', '11:07:00', 'edsa', '2025-09-13', 1, 4, 2, '2025-09-03 03:06:24', '2025-09-03 03:06:24'),
+(13, 'dasdad', 'dadad', 'medium', 'event', 'active', '2025-09-18', '11:17:00', 'dsa', '2025-09-26', 1, 1, 2, '2025-09-03 03:15:57', '2025-09-03 03:15:57'),
+(14, 'dasdad', 'dadadas', 'high', 'event', 'active', '2025-09-26', '02:16:00', 'ds', '2025-09-13', 1, 4, 2, '2025-09-03 03:16:17', '2025-09-03 03:16:17'),
+(15, 'dsada', 'dada', 'medium', 'event', 'active', '2025-09-17', '11:20:00', 'dasda', '2025-09-09', 1, 44, 2, '2025-09-03 03:16:56', '2025-09-03 03:16:56'),
+(16, 'dadad', 'dadada', 'medium', 'event', 'active', '2025-09-18', '11:19:00', 'dsada', '2025-09-27', 1, 23, 2, '2025-09-03 03:17:16', '2025-09-03 03:17:16'),
+(17, 'jasdjab', 'bjasfbaj', 'medium', 'event', 'active', '2025-09-05', '13:20:00', 'dasd', '2025-09-24', 1, 3, 2, '2025-09-04 05:19:39', '2025-09-04 05:19:39');
 
 -- --------------------------------------------------------
 
@@ -86,6 +92,30 @@ INSERT INTO `appointments` (`id`, `resident_id`, `purpose`, `description`, `appo
 (3, 3, 'Certificate of Residency', 'Request certificate of residency', '2025-06-22', '14:00:00', 'pending', '2025-06-17 07:52:56', '2025-06-17 07:52:56', NULL, NULL, NULL),
 (4, 1, 'Complaint Follow-up', 'Follow-up on street light repair', '2025-06-23', '11:00:00', 'pending', '2025-06-17 07:52:56', '2025-06-17 07:52:56', NULL, NULL, NULL),
 (5, 2, 'Community Meeting', 'Discuss neighborhood security concerns', '2025-06-24', '15:30:00', 'approved', '2025-06-17 07:52:56', '2025-06-17 07:52:56', NULL, NULL, NULL);
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `budgets`
+--
+
+CREATE TABLE `budgets` (
+  `id` int(11) NOT NULL,
+  `item` varchar(255) NOT NULL,
+  `description` text DEFAULT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `budget_date` date NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `status` enum('active','inactive') DEFAULT 'active'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `budgets`
+--
+
+INSERT INTO `budgets` (`id`, `item`, `description`, `amount`, `budget_date`, `created_at`, `updated_at`, `status`) VALUES
+(1, 'dajsbd', NULL, 7999.00, '2025-09-10', '2025-09-10 14:41:50', '2025-09-10 14:41:50', 'active');
 
 -- --------------------------------------------------------
 
@@ -252,7 +282,11 @@ CREATE TABLE `community_volunteers` (
 --
 
 INSERT INTO `community_volunteers` (`id`, `resident_id`, `announcement_id`, `status`, `rejection_reason`, `attendance_status`, `hours_served`, `approved_by`, `approved_at`, `attendance_marked_at`, `created_at`) VALUES
-(1, 16, 8, 'rejected', 'sorry', 'pending', 0.0, 2, '2025-08-19 13:19:36', NULL, '2025-08-17 13:16:01');
+(1, 16, 8, 'rejected', 'sorry', 'pending', 0.0, 2, '2025-08-19 13:19:36', NULL, '2025-08-17 13:16:01'),
+(4, 16, 11, 'approved', NULL, 'pending', 0.0, 2, '2025-09-03 13:44:38', NULL, '2025-09-03 05:00:30'),
+(5, 16, 15, 'approved', NULL, 'pending', 0.0, 2, '2025-09-03 13:44:55', NULL, '2025-09-03 05:27:07'),
+(6, 16, 13, 'rejected', 'hbdsa', 'pending', 0.0, 2, '2025-09-03 14:29:32', NULL, '2025-09-03 06:29:12'),
+(7, 16, 17, 'approved', NULL, 'pending', 0.0, 2, '2025-09-04 13:20:18', NULL, '2025-09-04 05:20:02');
 
 --
 -- Triggers `community_volunteers`
@@ -329,6 +363,30 @@ CREATE TABLE `email_verifications` (
 INSERT INTO `email_verifications` (`id`, `user_id`, `new_email`, `verification_code`, `code_expiry`, `created_at`) VALUES
 (1, 7, 'jeramelasid@gmail.com', '421033', '2025-07-31 10:25:55', '2025-07-31 16:10:55'),
 (2, 7, 'jeramel@gmail.com', '160594', '2025-07-31 10:34:23', '2025-07-31 16:19:23');
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `expenses`
+--
+
+CREATE TABLE `expenses` (
+  `id` int(11) NOT NULL,
+  `description` text DEFAULT NULL,
+  `amount` decimal(10,2) NOT NULL,
+  `budget_id` int(11) DEFAULT NULL,
+  `created_by` int(11) DEFAULT NULL,
+  `category` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `expenses`
+--
+
+INSERT INTO `expenses` (`id`, `description`, `amount`, `budget_id`, `created_by`, `category`, `created_at`, `updated_at`) VALUES
+(1, 'dsad', 3131.00, 1, 7, NULL, '2025-09-10 08:42:00', '2025-09-10 14:42:00');
 
 -- --------------------------------------------------------
 
@@ -428,7 +486,7 @@ CREATE TABLE `resident_accounts` (
 INSERT INTO `resident_accounts` (`id`, `resident_id`, `username`, `email`, `password`, `is_verified`, `verification_token`, `last_login`, `login_attempts`, `account_locked`, `created_at`, `updated_at`) VALUES
 (4, 9, 'cherry', 'cherry@gmail.com', '$2y$10$NxRSNHpYSnvi/MR4QzgDJOC5OMjHNkAzTA4s0JhknekWTzBVnLTBq', 1, '5f873b2514cfdb3c6f197bf1ebbe66aa76fc8b581b88e644997408d0cb1539ad', '2025-07-03 08:50:40', 0, 0, '2025-07-02 08:38:14', '2025-07-03 00:50:40'),
 (5, 15, 'marcussssss', 'leyciameay@gmail.com', '$2y$10$/Y3xkvHFcHYfad/gw68S8uOIblHs6tBGoMgDhwJEvptq4JncVbzZy', 1, 'dcc8176e9d30534bbd7bc83487335085d8d8abb42dcd64e30c325b8c347a019b', NULL, 0, 0, '2025-07-25 07:39:53', '2025-07-25 07:39:53'),
-(6, 16, 'resident', 'resident@gmail.com', '$2y$10$D1YdctePJpWXyZkAZktazeImrIBfFVfyrb2LHKoS5evX6Q8iQzPya', 1, '064a00841975e84b4e7fa08fbf7bd7c63ec9eb2ad66744a7be87728886695adf', '2025-08-19 13:06:32', 0, 0, '2025-08-01 21:27:39', '2025-08-19 05:06:32'),
+(6, 16, 'resident', 'resident@gmail.com', '$2y$10$D1YdctePJpWXyZkAZktazeImrIBfFVfyrb2LHKoS5evX6Q8iQzPya', 1, '064a00841975e84b4e7fa08fbf7bd7c63ec9eb2ad66744a7be87728886695adf', '2025-09-04 13:31:02', 0, 0, '2025-08-01 21:27:39', '2025-09-04 05:31:02'),
 (7, 17, 'KCprsnlcc', 'kcpersonalacc@gmail.com', '$2y$10$imdWXKZGyeS6wouNPUn2Bu3IdxIHg6GOnI6YxBu5jy1dZAjlZ2go6', 1, '8c34ce3016e2e6f0cfc1be7dd311e0098debf4d708593aee126b29bb0d24fff6', '2025-08-17 15:02:18', 0, 0, '2025-08-17 07:01:54', '2025-08-17 07:02:18');
 
 -- --------------------------------------------------------
@@ -442,7 +500,7 @@ CREATE TABLE `users` (
   `full_name` varchar(255) NOT NULL,
   `email` varchar(255) NOT NULL,
   `password` varchar(255) NOT NULL,
-  `role` enum('captain','secretary','super_admin') NOT NULL,
+  `role` enum('captain','secretary','super_admin','treasurer') NOT NULL,
   `status` enum('active','inactive') DEFAULT 'active',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `last_login` timestamp NULL DEFAULT NULL,
@@ -454,9 +512,9 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `full_name`, `email`, `password`, `role`, `status`, `created_at`, `last_login`, `updated_at`) VALUES
-(2, 'super admin', 'Jeramel@gmail.com', '$2y$10$9Yw.4Xuv7/FVUinUkluCg.HnRN7y8K.5aCDs8fn1X7rXt/pqhzwau', 'super_admin', 'active', '2025-06-25 04:51:40', '2025-08-19 12:30:21', '2025-08-19 12:30:21'),
+(2, 'super admin', 'Jeramel@gmail.com', '$2y$10$AGXRV5a3BeV9/RCshIzJ5Oq36WLEnUvNpRORl7gnj/CT7jMIfRVIe', 'super_admin', 'active', '2025-06-25 04:51:40', '2025-09-10 14:42:49', '2025-09-10 14:42:49'),
 (6, 'Jeramel Q. Asid', 'jeramelasid@gmail.com', '$2y$10$1VWcYXtAWqWn88P.rVJa1OaLy2aHcWWnclO2YiXui9sCMhvEtTDfG', 'secretary', 'active', '2025-07-02 05:59:25', '2025-08-17 08:13:08', '2025-08-17 08:13:08'),
-(7, 'Whidzmar Taraji', 'whidztaraji@gmail.com', '$2y$10$tSFpTT54QCBPcVII1fHTTuc1EIY.MtHNS4y8FB8pSdHlKJtQaoD3S', 'secretary', 'active', '2025-07-02 06:00:46', '2025-07-25 06:57:01', '2025-07-31 09:07:33');
+(7, 'Whidzmar Taraji', 'whidzmartaraji03@gmail.com', '$2y$10$OF4i.8P4AOmKLFFVRTg07.TCraMPniYGYHpyvY29ZI7DYsp0SDpRe', 'treasurer', 'active', '2025-07-02 06:00:46', '2025-09-10 14:41:04', '2025-09-10 16:52:42');
 
 --
 -- Indexes for dumped tables
@@ -476,6 +534,12 @@ ALTER TABLE `announcements`
 -- Indexes for table `appointments`
 --
 ALTER TABLE `appointments`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `budgets`
+--
+ALTER TABLE `budgets`
   ADD PRIMARY KEY (`id`);
 
 --
@@ -538,6 +602,14 @@ ALTER TABLE `email_verifications`
   ADD KEY `user_id` (`user_id`);
 
 --
+-- Indexes for table `expenses`
+--
+ALTER TABLE `expenses`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `budget_id` (`budget_id`),
+  ADD KEY `created_by` (`created_by`);
+
+--
 -- Indexes for table `login_history`
 --
 ALTER TABLE `login_history`
@@ -586,13 +658,19 @@ ALTER TABLE `users`
 -- AUTO_INCREMENT for table `announcements`
 --
 ALTER TABLE `announcements`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=18;
 
 --
 -- AUTO_INCREMENT for table `appointments`
 --
 ALTER TABLE `appointments`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+
+--
+-- AUTO_INCREMENT for table `budgets`
+--
+ALTER TABLE `budgets`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `certificates`
@@ -622,7 +700,7 @@ ALTER TABLE `certificate_types`
 -- AUTO_INCREMENT for table `community_volunteers`
 --
 ALTER TABLE `community_volunteers`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT for table `complaints`
@@ -635,6 +713,12 @@ ALTER TABLE `complaints`
 --
 ALTER TABLE `email_verifications`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT for table `expenses`
+--
+ALTER TABLE `expenses`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT for table `login_history`
@@ -664,7 +748,7 @@ ALTER TABLE `resident_accounts`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
 
 --
 -- Constraints for dumped tables
@@ -690,6 +774,13 @@ ALTER TABLE `community_volunteers`
 ALTER TABLE `complaints`
   ADD CONSTRAINT `complaints_ibfk_1` FOREIGN KEY (`resident_id`) REFERENCES `residents` (`id`) ON DELETE SET NULL,
   ADD CONSTRAINT `complaints_ibfk_2` FOREIGN KEY (`defendant_resident_id`) REFERENCES `residents` (`id`);
+
+--
+-- Constraints for table `expenses`
+--
+ALTER TABLE `expenses`
+  ADD CONSTRAINT `expenses_ibfk_1` FOREIGN KEY (`budget_id`) REFERENCES `budgets` (`id`),
+  ADD CONSTRAINT `expenses_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`id`);
 
 --
 -- Constraints for table `login_history`

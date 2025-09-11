@@ -1,0 +1,16 @@
+{
+    "name": "capstone/barangay-system",
+    "description": "Barangay Management System",
+    "type": "project",
+    "require": {
+        "phpmailer/phpmailer": "^6.8",
+        "php": ">=7.4"
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
