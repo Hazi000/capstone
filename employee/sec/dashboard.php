@@ -783,6 +783,10 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                     <i class="fas fa-users"></i>
                     Resident Profiling
                 </a>
+                <a href="resident_account.php" class="nav-item">
+					<i class="fas fa-user-shield"></i>
+					Resident Accounts
+				</a>
                 
             </div>
 

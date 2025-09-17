@@ -1247,6 +1247,10 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
 					<i class="fas fa-users"></i>
 					Resident Profiling
 				</a>
+				<a href="resident_account.php" class="nav-item">
+					<i class="fas fa-user-shield"></i>
+					Resident Accounts
+				</a>
 				
 				 
 			</div>

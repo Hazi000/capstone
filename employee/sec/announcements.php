@@ -1399,6 +1399,10 @@ if (isset($_GET['edit'])) {
                     <i class="fas fa-users"></i>
                     Resident Profiling
                 </a>
+                <a href="resident_account.php" class="nav-item">
+					<i class="fas fa-user-shield"></i>
+					Resident Accounts
+				</a>
             </div>
 
             <div class="nav-section">

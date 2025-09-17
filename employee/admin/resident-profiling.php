@@ -1328,6 +1328,10 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 					<i class="fas fa-users"></i>
 					Resident Profiling
 				</a>
+				<a href="resident_account.php" class="nav-item">
+					<i class="fas fa-user-shield"></i>
+					Resident Accounts
+				</a>
 			</div>
 
 			<div class="nav-section">
@@ -1503,9 +1507,6 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 										<td>
 											<button class="btn btn-warning btn-sm" onclick="editResident(<?php echo htmlspecialchars(json_encode($resident)); ?>)">
 												<i class="fas fa-edit"></i>
-											</button>
-											<button class="btn btn-info btn-sm" onclick='showAccountModal(<?php echo json_encode(['id'=>$resident['id'],'full_name'=>$resident['full_name']]); ?>)'>
-												<i class="fas fa-user-lock"></i>
 											</button>
 											<button class="btn btn-danger btn-sm" onclick="deleteResident(<?php echo $resident['id']; ?>, '<?php echo htmlspecialchars($resident['full_name']); ?>')">
 												<i class="fas fa-trash"></i>
@@ -1866,45 +1867,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 		</div>
 	</div>
 
-	<!-- Account Modal -->
-	<div class="modal" id="accountModal">
-		<div class="modal-content">
-			<div class="modal-header">
-				<h3 class="modal-title"><i class="fas fa-user-lock"></i> Manage Resident Account</h3>
-				<button class="close-btn" onclick="closeModal('accountModal')">&times;</button>
-			</div>
-			<div class="modal-body">
-				<form method="POST" id="accountForm">
-					<input type="hidden" name="action" value="manage_account">
-					<input type="hidden" name="resident_id" id="acct_resident_id">
-					<div style="margin-bottom: 1rem;">
-						<strong id="acctResidentName"></strong>
-					</div>
 
-					<div id="acctInfo" style="margin-bottom:1rem; display:none;">
-						<label>Existing Account:</label>
-						<div id="existingAccountInfo"></div>
-					</div>
-
-					<div class="form-group">
-						<label for="acct_username">Username</label>
-						<input type="text" id="acct_username" name="username" class="form-control" placeholder="Username (for create or to identify user)">
-					</div>
-
-					<div class="form-group">
-						<label for="acct_password">New Password</label>
-						<input type="password" id="acct_password" name="password" class="form-control" placeholder="Enter new password">
-					</div>
-
-					<div style="display:flex; gap:1rem; justify-content:flex-end; margin-top:1rem;">
-						<button type="button" class="btn" onclick="closeModal('accountModal')" style="background:#6c757d; color:white;">Cancel</button>
-						<button type="submit" name="type" value="change_password" class="btn btn-warning">Change Password</button>
-						<button type="submit" name="type" value="create" class="btn btn-success">Create Account</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
 
 	<script>
 		// Global variables
@@ -2712,44 +2675,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 			showModal('deleteModal');
 		}
 
-		// Show account modal
-		async function showAccountModal(resident) {
-			document.getElementById('acct_resident_id').value = resident.id;
-			document.getElementById('acctResidentName').textContent = resident.full_name;
-			document.getElementById('acct_username').value = '';
-			document.getElementById('acct_password').value = '';
-			document.getElementById('existingAccountInfo').innerHTML = '';
-			document.getElementById('acctInfo').style.display = 'none';
 
-			try {
-				const form = new FormData();
-				form.append('action', 'get_account');
-				form.append('resident_id', resident.id);
-
-				const resp = await fetch('resident-profiling.php', { method: 'POST', body: form });
-				const data = await resp.json();
-
-				if (data.found && data.user) {
-					document.getElementById('acctInfo').style.display = 'block';
-					const u = data.user;
-					document.getElementById('existingAccountInfo').innerHTML = `
-						<div>Username: <strong>${u.username}</strong></div>
-						<div>User ID: <strong>${u.id}</strong></div>
-					`;
-					// Pre-fill username to help change password
-					document.getElementById('acct_username').value = u.username;
-				} else {
-					document.getElementById('acctInfo').style.display = 'none';
-				}
-
-			} catch (e) {
-				console.error(e);
-			}
-
-			// Show modal
-			document.getElementById('accountModal').classList.add('show');
-			document.body.style.overflow = 'hidden';
-		}
 
 		// Show a modal with the given id (adds the 'show' class which is handled by CSS in this file)
 		function showModal(id) {
