@@ -955,7 +955,7 @@ if (isset($_GET['tab'])) {
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
-                <div class="user-role">Secretary</div>
+                <div class="user-role">Captain</div>
             </div>
         </div>
 
@@ -1008,6 +1008,18 @@ if (isset($_GET['tab'])) {
                     Disaster Management
                 </a>
             </div>
+            <!-- Finance -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>

@@ -1037,11 +1037,25 @@ if (isset($_GET['tab'])) {
                 <a href="certificates.php" class="nav-item active">
                     <i class="fas fa-certificate"></i>
                     Certificates
-                    <?php if ($stats['pending_certificates'] > 0): ?>
-                        <span class="nav-badge"><?php echo $stats['pending_certificates']; ?></span>
-                    <?php endif; ?>
+                    
+                </a>
+                 <a href="disaster_management.php" class="nav-item">
+                    <i class="fas fa-house-damage"></i>
+                    Disaster Management
                 </a>
             </div>
+            <!-- Finance -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>

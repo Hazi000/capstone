@@ -78,8 +78,10 @@ if (isset($_POST['signin'])) {
                     header("Location: admin/dashboard.php");
                 } elseif ($user['role'] == 'secretary') {
                     header("Location: sec/dashboard.php");
-                } else {
+                } elseif ($user['role'] == 'treasurer') {
                     header("Location: treasurer/dashboard.php");
+                } else {
+                    header("Location: captain/dashboard.php");
                 }
                 exit();
             } else {

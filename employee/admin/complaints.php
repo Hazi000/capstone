@@ -710,35 +710,6 @@ $all_complaints_result = mysqli_query($connection, $all_complaints_query);
 			transform: translateY(-1px);
 		}
 
-		.complaints-table {
-			width: 100%;
-			border-collapse: collapse;
-		}
-
-		.complaints-table th,
-		.complaints-table td {
-			padding: 1rem;
-			text-align: left;
-			border-bottom: 1px solid #f5f5f5;
-		}
-
-		.complaints-table th {
-			background: #f8f9fa;
-			font-weight: 600;
-			color: #495057;
-			font-size: 0.9rem;
-			text-transform: uppercase;
-			letter-spacing: 0.5px;
-		}
-
-		.complaints-table tr:hover {
-			background: #f8f9fa;
-		}
-
-		.complaints-table tr:last-child td {
-			border-bottom: none;
-		}
-
 		/* Status Badges */
 		.status-badge {
 			padding: 0.25rem 0.75rem;
@@ -1214,18 +1185,32 @@ $all_complaints_result = mysqli_query($connection, $all_complaints_query);
 				<a href="complaints.php" class="nav-item active">
 					<i class="fas fa-exclamation-triangle"></i>
 					Complaints
-					<?php if ($stats['pending_complaints'] > 0): ?>
+					<?php if (!empty($stats['pending_complaints'])): ?>
 						<span class="nav-badge"><?php echo $stats['pending_complaints']; ?></span>
 					<?php endif; ?>
 				</a>
-				
 				<a href="certificates.php" class="nav-item">
 					<i class="fas fa-certificate"></i>
 					Certificates
 				</a>
+				 <a href="disaster_management.php" class="nav-item">
+                    <i class="fas fa-house-damage"></i>
+                    Disaster Management
+                </a>
 			</div>
 
-		
+			<!-- Add Finance section -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
 			<div class="nav-section">
 				<div class="nav-section-title">Settings</div>

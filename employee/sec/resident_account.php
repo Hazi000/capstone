@@ -1358,14 +1358,15 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 					<i class="fas fa-certificate"></i>
 					Certificates
 				</a>
+				 <a href="disaster_management.php" class="nav-item">
+                    <i class="fas fa-house-damage"></i>
+                    Disaster Management
+                </a>
 			</div>
 
 			<div class="nav-section">
 				<div class="nav-section-title">Settings</div>
-				<a href="account_management.php" class="nav-item">
-					<i class="fas fa-user-cog"></i>
-					Account Management
-				</a>
+				
 				<a href="settings.php" class="nav-item">
 					<i class="fas fa-cog"></i>
 					Settings

@@ -23,6 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $age = intval($_POST['age']);
             $contact_number = mysqli_real_escape_string($connection, $_POST['contact_number']);
             $status = mysqli_real_escape_string($connection, $_POST['status']);
+            $zone = mysqli_real_escape_string($connection, $_POST['zone']);
             
             // Create full name
             $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
@@ -52,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $face_descriptor = mysqli_real_escape_string($connection, $_POST['face_descriptor']);
             }
             
-            $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, age, contact_number, status, photo_path, face_descriptor) 
-                           VALUES ('$first_name', '$middle_initial', '$last_name', '$full_name', $age, '$contact_number', '$status', " . 
+            $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, age, contact_number, status, zone, photo_path, face_descriptor) 
+                           VALUES ('$first_name', '$middle_initial', '$last_name', '$full_name', $age, '$contact_number', '$status', '$zone', " . 
                            ($photo_path ? "'$photo_path'" : "NULL") . ", " .
                            ($face_descriptor ? "'$face_descriptor'" : "NULL") . ")";
             
@@ -70,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $age = intval($_POST['age']);
             $contact_number = mysqli_real_escape_string($connection, $_POST['contact_number']);
             $status = mysqli_real_escape_string($connection, $_POST['status']);
+            $zone = mysqli_real_escape_string($connection, $_POST['zone']);
             
             // Create full name
             $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
@@ -117,7 +119,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            full_name = '$full_name',
                            age = $age, 
                            contact_number = '$contact_number', 
-                           status = '$status'
+                           status = '$status',
+                           zone = '$zone'
                            $photo_update
                            $face_update,
                            updated_at = CURRENT_TIMESTAMP
@@ -280,6 +283,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Get all residents with search and pagination
 $search = isset($_GET['search']) ? mysqli_real_escape_string($connection, $_GET['search']) : '';
 $status_filter = isset($_GET['status']) ? mysqli_real_escape_string($connection, $_GET['status']) : '';
+$zone_filter = isset($_GET['zone']) ? mysqli_real_escape_string($connection, $_GET['zone']) : '';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $records_per_page = 10;
 $offset = ($page - 1) * $records_per_page;
@@ -291,6 +295,9 @@ if (!empty($search)) {
 }
 if (!empty($status_filter)) {
     $where_conditions[] = "status = '$status_filter'";
+}
+if (!empty($zone_filter)) {
+    $where_conditions[] = "zone = '$zone_filter'";
 }
 
 $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
@@ -975,6 +982,11 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 			color: #004085;
 		}
 
+		.zone-badge {
+			background: #3498db;
+			color: white;
+		}
+
 		/* Action Buttons Section */
 		.action-buttons {
 			display: flex;
@@ -1355,7 +1367,23 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 					<i class="fas fa-certificate"></i>
 					Certificates
 				</a>
+				 <a href="disaster_management.php" class="nav-item">
+                    <i class="fas fa-house-damage"></i>
+                    Disaster Management
+                </a>
 			</div>
+			<!-- Finance -->
+            <div class="nav-section">
+                <div class="nav-section-title">Finance</div>
+                <a href="budgets.php" class="nav-item">
+                    <i class="fas fa-wallet"></i>
+                    Budgets
+                </a>
+                <a href="expenses.php" class="nav-item">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    Expenses
+                </a>
+            </div>
 
 			<div class="nav-section">
 				<div class="nav-section-title">Settings</div>
@@ -1445,6 +1473,15 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 								<option value="inactive" <?php echo $status_filter === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
 								<option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
 							</select>
+							<select name="zone" class="filter-select">
+								<option value="">All Zones</option>
+								<option value="Zone 1" <?php echo $zone_filter === 'Zone 1' ? 'selected' : ''; ?>>Zone 1</option>
+								<option value="Zone 2" <?php echo $zone_filter === 'Zone 2' ? 'selected' : ''; ?>>Zone 2</option>
+								<option value="Zone 3" <?php echo $zone_filter === 'Zone 3' ? 'selected' : ''; ?>>Zone 3</option>
+								<option value="Zone 4" <?php echo $zone_filter === 'Zone 4' ? 'selected' : ''; ?>>Zone 4</option>
+								<option value="Zone 5" <?php echo $zone_filter === 'Zone 5' ? 'selected' : ''; ?>>Zone 5</option>
+								<option value="Zone 6" <?php echo $zone_filter === 'Zone 6' ? 'selected' : ''; ?>>Zone 6</option>
+							</select>
 							<button type="submit" class="btn btn-primary btn-sm">
 								<i class="fas fa-search"></i> Search
 							</button>
@@ -1461,6 +1498,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 								<th>Age</th>
 								<th>Contact Number</th>
 								<th>Status</th>
+								<th>Zone</th>
 								<th>Face Data</th>
 								<th>Date Added</th>
 								<th>Actions</th>
@@ -1490,6 +1528,11 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 										<td>
 											<span class="status-badge status-<?php echo $resident['status']; ?>">
 												<?php echo ucfirst($resident['status']); ?>
+											</span>
+										</td>
+										<td>
+											<span class="status-badge zone-badge">
+												<?php echo htmlspecialchars($resident['zone']); ?>
 											</span>
 										</td>
 										<td>
@@ -1653,6 +1696,17 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 								<option value="pending">Pending</option>
 							</select>
 						</div>
+						<div class="form-group">
+							<label for="zone">Zone *</label>
+							<select id="zone" name="zone" class="form-control" required>
+								<option value="Zone 1">Zone 1</option>
+								<option value="Zone 2">Zone 2</option>
+								<option value="Zone 3">Zone 3</option>
+								<option value="Zone 4">Zone 4</option>
+								<option value="Zone 5">Zone 5</option>
+								<option value="Zone 6">Zone 6</option>
+							</select>
+						</div>
 					</div>
 					<div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
 						<button type="button" class="btn" onclick="closeModal('createModal')" style="background: #6c757d; color: white;">
@@ -1766,6 +1820,17 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 								<option value="active">Active</option>
 								<option value="inactive">Inactive</option>
 								<option value="pending">Pending</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label for="edit_zone">Zone *</label>
+							<select id="edit_zone" name="zone" class="form-control" required>
+								<option value="Zone 1">Zone 1</option>
+								<option value="Zone 2">Zone 2</option>
+								<option value="Zone 3">Zone 3</option>
+								<option value="Zone 4">Zone 4</option>
+								<option value="Zone 5">Zone 5</option>
+								<option value="Zone 6">Zone 6</option>
 							</select>
 						</div>
 					</div>
@@ -2654,6 +2719,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 			document.getElementById('edit_age').value = resident.age;
 			document.getElementById('edit_contact_number').value = resident.contact_number;
 			document.getElementById('edit_status').value = resident.status;
+			document.getElementById('edit_zone').value = resident.zone;
 			
 			// Handle photo display
 			if (resident.photo_path) {

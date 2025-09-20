@@ -1276,8 +1276,26 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
 					<i class="fas fa-certificate"></i>
 					Certificates
 				</a>
+				 <a href="disaster_management.php" class="nav-item">
+                    <i class="fas fa-house-damage"></i>
+                    Disaster Management
+                </a>
 			</div>
 
+			<!-- Finance -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
+
+			<!-- Settings (restored) -->
 			<div class="nav-section">
 				<div class="nav-section-title">Settings</div>
 				<a href="account_management.php" class="nav-item">
@@ -2071,6 +2089,7 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
  						list.innerHTML = '<div class="empty-state"><p>No pending applications.</p></div>';
  					} else {
  						apps.forEach(app => {
+ 						
  							list.insertAdjacentHTML('beforeend', `
  								<div class="volunteer-item">
  									<div>

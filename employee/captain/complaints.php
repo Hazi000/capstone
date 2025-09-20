@@ -2,8 +2,8 @@
 session_start();
 require_once '../../config.php';
 
-// Check if user is logged in and is a secretary
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'secretary') {
+// Check if user is logged in and is a captain
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'captain') {
     header("Location: ../index.php");
     exit();
 }
@@ -205,25 +205,6 @@ $all_complaints_query = "SELECT c.id, c.nature_of_complaint, c.description, c.st
                         $where_clause
                         ORDER BY c.created_at DESC";
 $all_complaints_result = mysqli_query($connection, $all_complaints_query);
-
-// Change the default filter from 'recent' to 'pending'
-$filter = isset($_GET['filter']) ? $_GET['filter'] : 'pending';
-$current_result = null;
-
-switch($filter) {
-    case 'all':
-        $current_result = $all_complaints_result;
-        $table_title = 'All Complaints';
-        break;
-    case 'resolved':
-        $current_result = $resolved_complaints_result;
-        $table_title = 'Resolved Complaints';
-        break;
-    default: // Default is now 'pending'
-        $current_result = $pending_complaints_result;
-        $table_title = 'Pending Complaints';
-        break;
-}
 ?>
 
 <!DOCTYPE html>
@@ -1175,33 +1156,6 @@ switch($filter) {
         .tab-content.active {
             display: block;
         }
-
-        /* Add these styles to your existing CSS */
-        .complaint-details {
-            padding: 20px;
-        }
-        
-        .detail-section {
-            margin-bottom: 25px;
-        }
-        
-        .detail-section h3 {
-            color: #2c3e50;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #eee;
-        }
-        
-        .detail-section p {
-            margin: 10px 0;
-            line-height: 1.6;
-        }
-        
-        .detail-section strong {
-            color: #34495e;
-            min-width: 120px;
-            display: inline-block;
-        }
     </style>
     <!-- Add SweetAlert CDN -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -1216,7 +1170,7 @@ switch($filter) {
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
-                <div class="user-role">Secretary</div>
+                <div class="user-role">Captain</div>
             </div>
         </div>
 
@@ -1271,7 +1225,18 @@ switch($filter) {
                 </a>
             </div>
 
-           
+           <!-- Finance -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
@@ -1311,6 +1276,21 @@ switch($filter) {
         </div>
 
         <div class="content-area">
+            <div class="header-actions">
+                <div class="header-left">
+                    <div class="page-header">
+                        <h1>Complaints Management</h1>
+                        <p>Manage and track all resident complaints</p>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="action-btn btn-add" onclick="openCreateModal()">
+                        <i class="fas fa-plus"></i>
+                        New Complaint
+                    </button>
+                </div>
+            </div>
+
             <?php if (isset($success_message)): ?>
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i> <?php echo $success_message; ?>
@@ -1323,107 +1303,707 @@ switch($filter) {
                 </div>
             <?php endif; ?>
 
-            <!-- Update the New Complaint button style -->
-            <div class="table-container">
-                <div class="table-header">
-                    <div class="table-title">
-                        <i class="fas fa-list"></i>
-                        <?php echo $table_title; ?>
+           
+
+            <!-- Tabs -->
+            <div class="tabs-container">
+                <div class="tabs">
+                    <button class="tab active" onclick="switchTab('recent')">
+                        <i class="fas fa-clock"></i> Recent Complaints
+                        <?php 
+                        $recent_count = mysqli_num_rows($recent_complaints_result);
+                        if ($recent_count > 0): 
+                        ?>
+                            <span class="tab-badge"><?php echo $recent_count; ?></span>
+                        <?php endif; ?>
+                    </button>
+                    <button class="tab" onclick="switchTab('all')">
+                        <i class="fas fa-list"></i> All Complaints
+                        <?php 
+                        $all_count = mysqli_num_rows($all_complaints_result);
+                        if ($all_count > 0): 
+                        ?>
+                            <span class="tab-badge"><?php echo $all_count; ?></span>
+                        <?php endif; ?>
+                    </button>
+                    <button class="tab" onclick="switchTab('pending')">
+                        <i class="fas fa-hourglass-half"></i> Pending
+                        <?php 
+                        $pending_count = mysqli_num_rows($pending_complaints_result);
+                        if ($pending_count > 0): 
+                        ?>
+                            <span class="tab-badge"><?php echo $pending_count; ?></span>
+                        <?php endif; ?>
+                    </button>
+                    <button class="tab" onclick="switchTab('resolved')">
+                        <i class="fas fa-check-circle"></i> Resolved
+                        <?php 
+                        $resolved_count = mysqli_num_rows($resolved_complaints_result);
+                        if ($resolved_count > 0): 
+                        ?>
+                            <span class="tab-badge"><?php echo $resolved_count; ?></span>
+                        <?php endif; ?>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Recent Complaints Tab (Default) -->
+            <div id="recent-tab" class="tab-content active">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <i class="fas fa-clock"></i>
+                            Recent Complaints (Last 7 Days)
+                        </div>
+                        <div class="table-search">
+                            <form method="GET" action="" style="display: flex; align-items: center; gap: 0.75rem;">
+                                <input type="hidden" name="status" value="<?php echo $filter_status; ?>">
+                                <input type="hidden" name="priority" value="<?php echo $filter_priority; ?>">
+                                <input type="hidden" name="date_from" value="<?php echo $filter_date_from; ?>">
+                                <input type="hidden" name="date_to" value="<?php echo $filter_date_to; ?>">
+                                <div class="compact-search">
+                                    <i class="fas fa-search compact-search-icon"></i>
+                                    <input type="text" name="search" class="compact-search-input" placeholder="Search complaints..." value="<?php echo htmlspecialchars($search); ?>">
+                                </div>
+                                <div class="compact-filter">
+                                    <button type="submit" class="compact-btn">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                    <a href="complaints.php" class="reset-link">
+                                        <i class="fas fa-redo"></i> Reset
+                                    </a>
+                                </div>
+                            </form>
+                        </div>
                     </div>
-                    <div class="table-search">
-                        <form method="GET" action="" style="display: flex; align-items: center; gap: 0.75rem;">
-                            <input type="hidden" name="status" value="<?php echo $filter_status; ?>">
-                            <input type="hidden" name="priority" value="<?php echo $filter_priority; ?>">
-                            <input type="hidden" name="date_from" value="<?php echo $filter_date_from; ?>">
-                            <input type="hidden" name="date_to" value="<?php echo $filter_date_to; ?>">
-                            <div class="compact-search">
-                                <i class="fas fa-search compact-search-icon"></i>
-                                <input type="text" name="search" class="compact-search-input" placeholder="Search complaints..." value="<?php echo htmlspecialchars($search); ?>">
-                            </div>
-                            <div class="compact-filter">
-                                <button type="submit" class="compact-btn">
-                                    <i class="fas fa-search"></i> Search
-                                </button>
-                                <select name="filter" class="compact-select" onchange="this.form.submit()">
-                                    <option value="pending" <?php echo $filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                    <option value="all" <?php echo $filter === 'all' ? 'selected' : ''; ?>>All Time</option>
-                                    <option value="resolved" <?php echo $filter === 'resolved' ? 'selected' : ''; ?>>Resolved</option>
-                                </select>
-                                <button type="button" class="compact-btn" onclick="openCreateModal()">
-                                    <i class="fas fa-plus"></i> New Complaint
-                                </button>
-                            </div>
-                        </form>
+                    
+                    <table class="complaints-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nature of Complaint</th>
+                                <th>Complainant</th>
+                                <th>Defendant</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                                <th>Date Filed</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            mysqli_data_seek($recent_complaints_result, 0);
+                            if (mysqli_num_rows($recent_complaints_result) > 0): 
+                            ?>
+                                <?php while ($complaint = mysqli_fetch_assoc($recent_complaints_result)): ?>
+                                    <tr>
+                                        <td>#<?php echo $complaint['id']; ?></td>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php echo htmlspecialchars(substr($complaint['description'], 0, 50)) . '...'; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['resident_name']) {
+                                                echo htmlspecialchars($complaint['resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['complainant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php 
+                                                if ($complaint['resident_contact']) {
+                                                    echo htmlspecialchars($complaint['resident_contact']);
+                                                } else {
+                                                    echo htmlspecialchars($complaint['complainant_contact'] ?? 'N/A');
+                                                }
+                                                ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['defendant_resident_name']) {
+                                                echo htmlspecialchars($complaint['defendant_resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['defendant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php 
+                                                if ($complaint['defendant_resident_contact']) {
+                                                    echo htmlspecialchars($complaint['defendant_resident_contact']);
+                                                } else {
+                                                    echo htmlspecialchars($complaint['defendant_contact'] ?? 'N/A');
+                                                }
+                                                ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <span class="priority-badge priority-<?php echo $complaint['priority']; ?>">
+                                                <?php echo ucfirst($complaint['priority']); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo $complaint['status']; ?>">
+                                                <?php echo ucfirst(str_replace('-', ' ', $complaint['status'])); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo date('M j, Y g:i A', strtotime($complaint['created_at'])); ?></td>
+                                        <td>
+                                            <button class="action-btn btn-primary" onclick="viewComplaint(<?php echo $complaint['id']; ?>)">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                            <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, '<?php echo $complaint['status']; ?>')">
+                                                <i class="fas fa-edit"></i> Update
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="8" style="text-align: center; padding: 2rem; color: #666;">
+                                        <i class="fas fa-clock" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; color: #3498db;"></i>
+                                        <br>
+                                        No recent complaints (last 7 days)
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- All Complaints Tab -->
+            <div id="all-tab" class="tab-content">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <i class="fas fa-list"></i>
+                            All Complaints
+                        </div>
+                        <div class="table-search">
+                            <form method="GET" action="" style="display: flex; align-items: center; gap: 0.75rem;">
+                                <input type="hidden" name="status" value="<?php echo $filter_status; ?>">
+                                <input type="hidden" name="priority" value="<?php echo $filter_priority; ?>">
+                                <input type="hidden" name="date_from" value="<?php echo $filter_date_from; ?>">
+                                <input type="hidden" name="date_to" value="<?php echo $filter_date_to; ?>">
+                                <div class="compact-search">
+                                    <i class="fas fa-search compact-search-icon"></i>
+                                    <input type="text" name="search" class="compact-search-input" placeholder="Search complaints..." value="<?php echo htmlspecialchars($search); ?>">
+                                </div>
+                                <div class="compact-filter">
+                                    <button type="submit" class="compact-btn">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                    <a href="complaints.php" class="reset-link">
+                                        <i class="fas fa-redo"></i> Reset
+                                    </a>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <table class="complaints-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nature of Complaint</th>
+                                <th>Complainant</th>
+                                <th>Defendant</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                                <th>Date Filed</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            mysqli_data_seek($all_complaints_result, 0);
+                            if (mysqli_num_rows($all_complaints_result) > 0): 
+                            ?>
+                                <?php while ($complaint = mysqli_fetch_assoc($all_complaints_result)): ?>
+                                    <tr>
+                                        <td>#<?php echo $complaint['id']; ?></td>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php echo htmlspecialchars(substr($complaint['description'], 0, 50)) . '...'; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['resident_name']) {
+                                                echo htmlspecialchars($complaint['resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['complainant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php 
+                                                if ($complaint['resident_contact']) {
+                                                    echo htmlspecialchars($complaint['resident_contact']);
+                                                } else {
+                                                    echo htmlspecialchars($complaint['complainant_contact'] ?? 'N/A');
+                                                }
+                                                ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['defendant_resident_name']) {
+                                                echo htmlspecialchars($complaint['defendant_resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['defendant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php 
+                                                if ($complaint['defendant_resident_contact']) {
+                                                    echo htmlspecialchars($complaint['defendant_resident_contact']);
+                                                } else {
+                                                    echo htmlspecialchars($complaint['defendant_contact'] ?? 'N/A');
+                                                }
+                                                ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <span class="priority-badge priority-<?php echo $complaint['priority']; ?>">
+                                                <?php echo ucfirst($complaint['priority']); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo $complaint['status']; ?>">
+                                                <?php echo ucfirst(str_replace('-', ' ', $complaint['status'])); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo date('M j, Y', strtotime($complaint['created_at'])); ?></td>
+                                        <td>
+                                            <button class="action-btn btn-primary" onclick="viewComplaint(<?php echo $complaint['id']; ?>)">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                            <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, '<?php echo $complaint['status']; ?>')">
+                                                <i class="fas fa-edit"></i> Update
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="8" style="text-align: center; padding: 2rem; color: #666;">
+                                        <i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+                                        <br>
+                                        No complaints found
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Pending Complaints Tab -->
+            <div id="pending-tab" class="tab-content">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <i class="fas fa-hourglass-half"></i>
+                            Pending Complaints
+                        </div>
+                        <div class="table-search">
+                            <form method="GET" action="" style="display: flex; align-items: center; gap: 0.75rem;">
+                                <input type="hidden" name="status" value="<?php echo $filter_status; ?>">
+                                <input type="hidden" name="priority" value="<?php echo $filter_priority; ?>">
+                                <input type="hidden" name="date_from" value="<?php echo $filter_date_from; ?>">
+                                <input type="hidden" name="date_to" value="<?php echo $filter_date_to; ?>">
+                                <div class="compact-search">
+                                    <i class="fas fa-search compact-search-icon"></i>
+                                    <input type="text" name="search" class="compact-search-input" placeholder="Search complaints..." value="<?php echo htmlspecialchars($search); ?>">
+                                </div>
+                                <div class="compact-filter">
+                                    <button type="submit" class="compact-btn">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                    <a href="complaints.php" class="reset-link">
+                                        <i class="fas fa-redo"></i> Reset
+                                    </a>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <table class="complaints-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nature of Complaint</th>
+                                <th>Complainant</th>
+                                <th>Defendant</th>
+                                <th>Priority</th>
+                                <th>Status</th>
+                                <th>Date Filed</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            mysqli_data_seek($pending_complaints_result, 0);
+                            if (mysqli_num_rows($pending_complaints_result) > 0): 
+                            ?>
+                                <?php while ($complaint = mysqli_fetch_assoc($pending_complaints_result)): ?>
+                                    <tr>
+                                        <td>#<?php echo $complaint['id']; ?></td>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php echo htmlspecialchars(substr($complaint['description'], 0, 50)) . '...'; ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['resident_name']) {
+                                                echo htmlspecialchars($complaint['resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['complainant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php 
+                                                if ($complaint['resident_contact']) {
+                                                    echo htmlspecialchars($complaint['resident_contact']);
+                                                } else {
+                                                    echo htmlspecialchars($complaint['complainant_contact'] ?? 'N/A');
+                                                }
+                                                ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['defendant_resident_name']) {
+                                                echo htmlspecialchars($complaint['defendant_resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['defendant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                            <br>
+                                            <small style="color: #666;">
+                                                <?php 
+                                                if ($complaint['defendant_resident_contact']) {
+                                                    echo htmlspecialchars($complaint['defendant_resident_contact']);
+                                                } else {
+                                                    echo htmlspecialchars($complaint['defendant_contact'] ?? 'N/A');
+                                                }
+                                                ?>
+                                            </small>
+                                        </td>
+                                        <td>
+                                            <span class="priority-badge priority-<?php echo $complaint['priority']; ?>">
+                                                <?php echo ucfirst($complaint['priority']); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo $complaint['status']; ?>">
+                                                <?php echo ucfirst(str_replace('-', ' ', $complaint['status'])); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo date('M j, Y', strtotime($complaint['created_at'])); ?></td>
+                                        <td>
+                                            <button class="action-btn btn-primary" onclick="viewComplaint(<?php echo $complaint['id']; ?>)">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                            <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, '<?php echo $complaint['status']; ?>')">
+                                                <i class="fas fa-edit"></i> Update
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="8" style="text-align: center; padding: 2rem; color: #666;">
+                                        <i class="fas fa-check-circle" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3; color: #27ae60;"></i>
+                                        <br>
+                                        No pending complaints
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Resolved Complaints Tab -->
+            <div id="resolved-tab" class="tab-content">
+                <div class="table-container">
+                    <div class="table-header">
+                        <div class="table-title">
+                            <i class="fas fa-check-circle"></i>
+                            Resolved Complaints
+                        </div>
+                        <div class="table-search">
+                            <form method="GET" action="" style="display: flex; align-items: center; gap: 0.75rem;">
+                                <input type="hidden" name="status" value="<?php echo $filter_status; ?>">
+                                <input type="hidden" name="priority" value="<?php echo $filter_priority; ?>">
+                                <input type="hidden" name="date_from" value="<?php echo $filter_date_from; ?>">
+                                <input type="hidden" name="date_to" value="<?php echo $filter_date_to; ?>">
+                                <div class="compact-search">
+                                    <i class="fas fa-search compact-search-icon"></i>
+                                    <input type="text" name="search" class="compact-search-input" placeholder="Search complaints..." value="<?php echo htmlspecialchars($search); ?>">
+                                </div>
+                                <div class="compact-filter">
+                                    <button type="submit" class="compact-btn">
+                                        <i class="fas fa-search"></i> Search
+                                    </button>
+                                    <a href="complaints.php" class="reset-link">
+                                        <i class="fas fa-redo"></i> Reset
+                                    </a>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                    
+                    <table class="complaints-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nature of Complaint</th>
+                                <th>Complainant</th>
+                                <th>Defendant</th>
+                                <th>Resolution</th>
+                                <th>Mediation Date</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            mysqli_data_seek($resolved_complaints_result, 0);
+                            if (mysqli_num_rows($resolved_complaints_result) > 0): 
+                            ?>
+                                <?php while ($complaint = mysqli_fetch_assoc($resolved_complaints_result)): ?>
+                                    <tr>
+                                        <td>#<?php echo $complaint['id']; ?></td>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></strong>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['resident_name']) {
+                                                echo htmlspecialchars($complaint['resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['complainant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                        </td>
+                                        <td>
+                                            <strong><?php 
+                                            if ($complaint['defendant_resident_name']) {
+                                                echo htmlspecialchars($complaint['defendant_resident_name']);
+                                            } else {
+                                                echo htmlspecialchars($complaint['defendant_name'] ?? 'Unknown');
+                                            }
+                                            ?></strong>
+                                        </td>
+                                        <td>
+                                            <?php if ($complaint['resolution']): ?>
+                                                <small><?php echo htmlspecialchars(substr($complaint['resolution'], 0, 50)) . '...'; ?></small>
+                                            <?php else: ?>
+                                                <small style="color: #999;">No resolution recorded</small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if ($complaint['mediation_date']): ?>
+                                                <?php echo date('M j, Y', strtotime($complaint['mediation_date'])); ?>
+                                            <?php else: ?>
+                                                <small style="color: #999;">N/A</small>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <span class="status-badge status-<?php echo $complaint['status']; ?>">
+                                                <?php echo ucfirst(str_replace('-', ' ', $complaint['status'])); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <button class="action-btn btn-primary" onclick="viewComplaint(<?php echo $complaint['id']; ?>)">
+                                                <i class="fas fa-eye"></i> View
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endwhile; ?>
+                            <?php else: ?>
+                                <tr>
+                                    <td colspan="8" style="text-align: center; padding: 2rem; color: #666;">
+                                        <i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
+                                        <br>
+                                        No resolved complaints found
+                                    </td>
+                                </tr>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Complaint Modal -->
+    <div class="modal" id="createModal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal('createModal')">&times;</button>
+            <div class="modal-header">
+                <h2 class="modal-title">Create New Complaint</h2>
+            </div>
+            <form method="POST" action="">
+                <div class="form-group">
+                    <label class="form-label">Nature of Complaint *</label>
+                    <input type="text" class="form-input" name="nature_of_complaint" required placeholder="Enter nature/purpose of complaint">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Description *</label>
+                    <textarea class="form-textarea" name="description" required placeholder="Describe the complaint in detail"></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Priority *</label>
+                    <select class="form-select" name="priority" required>
+                        <option value="">Select Priority</option>
+                        <option value="low">Low</option>
+                        <option value="medium">Medium</option>
+                        <option value="high">High</option>
+                    </select>
+                </div>
+                
+                <!-- COMPLAINANT SECTION -->
+                <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <h4 style="margin-bottom: 1rem; color: #333;">Complainant Information</h4>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Complainant Name *</label>
+                        <div style="position: relative;">
+                            <input type="text" 
+                                   class="form-input search-input" 
+                                   id="complainantSearch" 
+                                   name="complainant_name"
+                                   placeholder="Type name to search or enter new name..."
+                                   autocomplete="off"
+                                   required>
+                            <div id="complainantSearchResults" class="search-results"></div>
+                        </div>
+                        <div id="complainantStatus" class="resident-status"></div>
+                    </div>
+                    
+                    <!-- Hidden fields for complainant -->
+                    <input type="hidden" name="complainant_type" id="complainantType" value="non-resident">
+                    <input type="hidden" name="resident_id" id="complainantResidentId" value="">
+                    
+                    <div class="form-group">
+                        <label class="form-label">Contact Number *</label>
+                        <input type="text" class="form-input" name="complainant_contact" id="complainantContact" required placeholder="Enter contact number">
                     </div>
                 </div>
                 
-                <table class="complaints-table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Nature of Complaint</th>
-                            <th>Complainant</th>
-                            <th>Defendant</th>
-                            <th>Priority</th>
-                            <th>Status</th>
-                            <th>Date Filed</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php 
-                        if (mysqli_num_rows($current_result) > 0):
-                            while ($complaint = mysqli_fetch_assoc($current_result)): 
-                        ?>
-                            <tr>
-                                <td>#<?php echo $complaint['id']; ?></td>
-                                <td>
-                                    <strong><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></strong>
-                                </td>
-                                <td>
-                                    <strong><?php echo $complaint['resident_name'] ?: htmlspecialchars($complaint['complainant_name']); ?></strong>
-                                </td>
-                                <td>
-                                    <strong><?php echo $complaint['defendant_resident_name'] ?: htmlspecialchars($complaint['defendant_name']); ?></strong>
-                                </td>
-                                <td>
-                                    <span class="priority-badge priority-<?php echo $complaint['priority']; ?>">
-                                        <?php echo ucfirst($complaint['priority']); ?>
-                                    </span>
-                                </td>
-                                <td>
-                                    <span class="status-badge status-<?php echo $complaint['status']; ?>">
-                                        <?php echo ucfirst(str_replace('-', ' ', $complaint['status'])); ?>
-                                    </span>
-                                </td>
-                                <td><?php echo date('M j, Y', strtotime($complaint['created_at'])); ?></td>
-                                <td>
-                                    <button class="action-btn btn-primary" onclick="viewComplaint(<?php echo htmlspecialchars(json_encode($complaint)); ?>)">
-                                        <i class="fas fa-eye"></i> View
-                                    </button>
-                                    <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, '<?php echo $complaint['status']; ?>')">
-                                        <i class="fas fa-edit"></i> Update
-                                    </button>
-                                </td>
-                            </tr>
-                        <?php 
-                            endwhile;
-                        else:
-                        ?>
-                            <tr>
-                                <td colspan="8" style="text-align: center; padding: 2rem; color: #666;">
-                                    <i class="fas fa-inbox" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
-                                    <br>
-                                    No complaints found
-                                </td>
-                            </tr>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
-            </div>
+                <!-- DEFENDANT SECTION -->
+                <div style="background: #fff3cd; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                    <h4 style="margin-bottom: 1rem; color: #333;">Defendant Information</h4>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Defendant Name *</label>
+                        <div style="position: relative;">
+                            <input type="text" 
+                                   class="form-input search-input" 
+                                   id="defendantSearch" 
+                                   name="defendant_name"
+                                   placeholder="Type name to search or enter new name..."
+                                   autocomplete="off"
+                                   required>
+                            <div id="defendantSearchResults" class="search-results"></div>
+                        </div>
+                        <div id="defendantStatus" class="resident-status"></div>
+                    </div>
+                    
+                    <!-- Hidden fields for defendant -->
+                    <input type="hidden" name="defendant_type" id="defendantType" value="non-resident">
+                    <input type="hidden" name="defendant_resident_id" id="defendantResidentId" value="">
+                    
+                    <div class="form-group">
+                        <label class="form-label">Contact Number *</label>
+                        <input type="text" class="form-input" name="defendant_contact" id="defendantContact" required placeholder="Enter contact number">
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="action-btn btn-secondary" onclick="closeModal('createModal')">Cancel</button>
+                    <button type="submit" name="create_complaint" class="action-btn btn-primary">Create Complaint</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
-<!-- Add this JavaScript before the closing </body> tag -->
-<script>
+    <!-- Status Update Modal -->
+    <div class="modal" id="statusModal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal('statusModal')">&times;</button>
+            <div class="modal-header">
+                <h2 class="modal-title">Update Complaint Status</h2>
+            </div>
+            <form method="POST" action="">
+                <input type="hidden" id="complaintId" name="complaint_id">
+                <div class="form-group">
+                    <label class="form-label">Status *</label>
+                    <select class="form-select" name="status" id="statusSelect" required onchange="toggleResolutionFields()">
+                        <option value="pending">Pending</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                    </select>
+                </div>
+                
+                <div id="resolutionFields" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Resolution Details</label>
+                        <textarea class="form-textarea" name="resolution" placeholder="Describe how the complaint was resolved..."></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Date of Mediation</label>
+                        <input type="date" class="form-input" name="mediation_date">
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" class="action-btn btn-secondary" onclick="closeModal('statusModal')">Cancel</button>
+                    <button type="submit" name="update_status" class="action-btn btn-primary">Update Status</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- View Complaint Modal -->
+    <div class="modal" id="viewModal">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal('viewModal')">&times;</button>
+            <div class="modal-header">
+                <h2 class="modal-title">Complaint Details</h2>
+            </div>
+            <div id="complaintDetails">
+                <!-- Complaint details will be loaded here -->
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="action-btn btn-secondary" onclick="closeModal('viewModal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
         // Resident data from PHP
         const residents = <?php 
             mysqli_data_seek($residents_result, 0);
@@ -1640,6 +2220,24 @@ switch($filter) {
             document.getElementById('createModal').style.display = 'block';
         }
 
+        function switchTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Remove active class from all tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Add active class to clicked tab
+            event.target.closest('.tab').classList.add('active');
+        }
+
         function toggleResolutionFields() {
             const statusSelect = document.getElementById('statusSelect');
             const resolutionFields = document.getElementById('resolutionFields');
@@ -1649,6 +2247,46 @@ switch($filter) {
             } else {
                 resolutionFields.style.display = 'none';
             }
+        }
+
+        function viewComplaint(id) {
+            // For this demo, we'll create a simple view
+            // In production, you'd fetch this data via AJAX
+            const modal = document.getElementById('viewModal');
+            const detailsDiv = document.getElementById('complaintDetails');
+            
+            // This is a placeholder - in production, fetch actual data
+            detailsDiv.innerHTML = `
+                <div style="margin-bottom: 1rem;">
+                    <strong>Loading complaint details...</strong>
+                </div>
+            `;
+            
+            modal.style.display = 'block';
+            
+            // Simulate AJAX call
+            setTimeout(() => {
+                detailsDiv.innerHTML = `
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Complaint ID:</strong> #${id}
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Status:</strong> <span class="status-badge status-pending">Pending</span>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Nature of Complaint:</strong> Sample Complaint
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Description:</strong><br>
+                        <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-top: 0.5rem;">
+                            This is a sample complaint description. In production, this would show the actual complaint details.
+                        </div>
+                    </div>
+                    <div style="margin-bottom: 1rem;">
+                        <strong>Date Filed:</strong> ${new Date().toLocaleDateString()}
+                    </div>
+                `;
+            }, 500);
         }
 
         function updateStatus(id, currentStatus) {
@@ -1692,171 +2330,6 @@ switch($filter) {
         document.getElementById('sidebarOverlay').addEventListener('click', function() {
             toggleSidebar();
         });
-
-        function viewComplaint(complaint) {
-                    // Set complaint details
-                    document.getElementById('viewNature').textContent = complaint.nature_of_complaint;
-                    document.getElementById('viewDescription').textContent = complaint.description;
-                    document.getElementById('viewPriority').textContent = complaint.priority;
-                    document.getElementById('viewStatus').textContent = complaint.status;
-                    document.getElementById('viewDate').textContent = new Date(complaint.created_at).toLocaleDateString();
-                    
-                    // Set complainant details
-                    document.getElementById('viewComplainant').textContent = complaint.resident_name || complaint.complainant_name;
-                    document.getElementById('viewComplainantContact').textContent = complaint.resident_contact || complaint.complainant_contact;
-                    
-                    // Set defendant details
-                    document.getElementById('viewDefendant').textContent = complaint.defendant_resident_name || complaint.defendant_name;
-                    document.getElementById('viewDefendantContact').textContent = complaint.defendant_resident_contact || complaint.defendant_contact;
-                    
-                    // Handle resolution section
-                    const resolutionSection = document.getElementById('resolutionSection');
-                    if (complaint.status === 'resolved' || complaint.status === 'closed') {
-                        document.getElementById('viewResolution').textContent = complaint.resolution || 'No resolution provided';
-                        document.getElementById('viewMediationDate').textContent = complaint.mediation_date || 'No date set';
-                        resolutionSection.style.display = 'block';
-                    } else {
-                        resolutionSection.style.display = 'none';
-                    }
-                    
-                    // Show modal
-                    document.getElementById('viewModal').style.display = 'block';
-                }
-    </script>        
-
-<!-- Create Complaint Modal -->
-<div class="modal" id="createModal">
-    <div class="modal-content">
-        <button class="close-btn" onclick="closeModal('createModal')">&times;</button>
-        <div class="modal-header">
-            <h2 class="modal-title">Create New Complaint</h2>
-        </div>
-        <form method="POST" action="">
-            <div class="form-group">
-                <label class="form-label">Nature of Complaint</label>
-                <input type="text" name="nature_of_complaint" class="form-input" required>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Description</label>
-                <textarea name="description" class="form-textarea" required></textarea>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Priority</label>
-                <select name="priority" class="form-select" required>
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                </select>
-            </div>
-            
-            <!-- Complainant Details -->
-            <div class="form-group">
-                <label class="form-label">Complainant</label>
-                <input type="text" id="complainantSearch" class="form-input" placeholder="Search resident..." required>
-                <div id="complainantSearchResults" class="search-results"></div>
-                <div id="complainantStatus" class="resident-status"></div>
-                <input type="hidden" id="complainantType" name="complainant_type" value="non-resident">
-                <input type="hidden" id="complainantResidentId" name="resident_id" value="">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Complainant Contact</label>
-                <input type="text" id="complainantContact" name="complainant_contact" class="form-input">
-            </div>
-
-            <!-- Defendant Details -->
-            <div class="form-group">
-                <label class="form-label">Defendant</label>
-                <input type="text" id="defendantSearch" class="form-input" placeholder="Search resident..." required>
-                <div id="defendantSearchResults" class="search-results"></div>
-                <div id="defendantStatus" class="resident-status"></div>
-                <input type="hidden" id="defendantType" name="defendant_type" value="non-resident">
-                <input type="hidden" id="defendantResidentId" name="defendant_resident_id" value="">
-            </div>
-            <div class="form-group">
-                <label class="form-label">Defendant Contact</label>
-                <input type="text" id="defendantContact" name="defendant_contact" class="form-input">
-            </div>
-
-            <div class="modal-actions">
-                <button type="button" class="action-btn btn-secondary" onclick="closeModal('createModal')">Cancel</button>
-                <button type="submit" name="create_complaint" class="action-btn btn-success">Create Complaint</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Status Update Modal -->
-<div class="modal" id="statusModal">
-    <div class="modal-content">
-        <button class="close-btn" onclick="closeModal('statusModal')">&times;</button>
-        <div class="modal-header">
-            <h2 class="modal-title">Update Complaint Status</h2>
-        </div>
-        <form method="POST" action="">
-            <input type="hidden" id="complaintId" name="complaint_id">
-            <div class="form-group">
-                <label class="form-label">Status</label>
-                <select name="status" id="statusSelect" class="form-select" onchange="toggleResolutionFields()" required>
-                    <option value="pending">Pending</option>
-                    <option value="in-progress">In Progress</option>
-                    <option value="resolved">Resolved</option>
-                    <option value="closed">Closed</option>
-                </select>
-            </div>
-            
-            <div id="resolutionFields" style="display: none;">
-                <div class="form-group">
-                    <label class="form-label">Resolution Details</label>
-                    <textarea name="resolution" class="form-textarea"></textarea>
-                </div>
-                <div class="form-group">
-                    <label class="form-label">Mediation Date</label>
-                    <input type="date" name="mediation_date" class="form-input">
-                </div>
-            </div>
-
-            <div class="modal-actions">
-                <button type="button" class="action-btn btn-secondary" onclick="closeModal('statusModal')">Cancel</button>
-                <button type="submit" name="update_status" class="action-btn btn-success">Update Status</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- Add View Modal -->
-<div class="modal" id="viewModal">
-                    <div class="modal-content">
-                        <button class="close-btn" onclick="closeModal('viewModal')">&times;</button>
-                        <div class="modal-header">
-                            <h2 class="modal-title">Complaint Details</h2>
-                        </div>
-                        <div class="complaint-details">
-                            <div class="detail-section">
-                                <h3>Complaint Information</h3>
-                                <p><strong>Nature:</strong> <span id="viewNature"></span></p>
-                                <p><strong>Description:</strong> <span id="viewDescription"></span></p>
-                                <p><strong>Priority:</strong> <span id="viewPriority"></span></p>
-                                <p><strong>Status:</strong> <span id="viewStatus"></span></p>
-                                <p><strong>Date Filed:</strong> <span id="viewDate"></span></p>
-                            </div>
-                            <div class="detail-section">
-                                <h3>Complainant Information</h3>
-                                <p><strong>Name:</strong> <span id="viewComplainant"></span></p>
-                                <p><strong>Contact:</strong> <span id="viewComplainantContact"></span></p>
-                            </div>
-                            <div class="detail-section">
-                                <h3>Defendant Information</h3>
-                                <p><strong>Name:</strong> <span id="viewDefendant"></span></p>
-                                <p><strong>Contact:</strong> <span id="viewDefendantContact"></span></p>
-                            </div>
-                            <div class="detail-section" id="resolutionSection">
-                                <h3>Resolution Information</h3>
-                                <p><strong>Resolution:</strong> <span id="viewResolution"></span></p>
-                                <p><strong>Mediation Date:</strong> <span id="viewMediationDate"></span></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
+    </script>
 </body>
 </html>

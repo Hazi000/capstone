@@ -119,14 +119,29 @@ $months = [
     10 => 'October', 11 => 'November', 12 => 'December'
 ];
 
-// Then build main query with filters
+// Add pagination settings
+$items_per_page = 10;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$offset = ($page - 1) * $items_per_page;
+
+// Modify main query to include pagination
 $query = "SELECT e.*, u.full_name as created_by_name, b.item as budget_item 
           FROM expenses e 
           LEFT JOIN users u ON e.created_by = u.id 
           LEFT JOIN budgets b ON e.budget_id = b.id
           WHERE YEAR(e.created_at) = $year 
           AND MONTH(e.created_at) = $month
-          ORDER BY e.created_at DESC";
+          ORDER BY e.created_at DESC
+          LIMIT $items_per_page OFFSET $offset";
+
+// Add total pages calculation
+$total_records_query = "SELECT COUNT(*) as count 
+                       FROM expenses 
+                       WHERE YEAR(created_at) = $year 
+                       AND MONTH(created_at) = $month";
+$total_result = mysqli_query($connection, $total_records_query);
+$total_records = mysqli_fetch_assoc($total_result)['count'];
+$total_pages = ceil($total_records / $items_per_page);
 
 $result = mysqli_query($connection, $query);
 if ($result) {
@@ -425,58 +440,54 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
             box-shadow: 0 4px 10px rgba(0,0,0,0.15);
         }
 
+        /* Replace the existing budget-table styles with these updated ones */
         .budget-table {
             width: 100%;
-            background: white;
-            border-radius: 12px;
+            background: #F9FAFB;
+            border-radius: 15px;
             overflow: hidden;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            border: 1px solid #D1D5DB;
+            margin-top: 2rem;
         }
 
         .budget-table th {
-            background: #f8f9fa;
-            padding: 1rem 1.5rem;
+            background: #F3F4F6;
+            padding: 1.2rem 1.5rem;
             font-weight: 600;
-            color: #2c3e50;
+            color: #111827;
             text-align: left;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid #D1D5DB;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .budget-table td {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid #f1f1f1;
-            color: #2c3e50;
+            padding: 1.2rem 1.5rem;
+            border-bottom: 1px solid #D1D5DB;
+            color: #111827;
+            vertical-align: middle;
+        }
+
+        .budget-table tr:nth-child(even) {
+            background: #F3F4F6;
         }
 
         .budget-table tr:hover {
-            background: #f8f9fa;
+            background: #F3F4F6;
+            transition: background-color 0.3s ease;
         }
 
         .budget-amount {
             font-family: 'Monaco', monospace;
             font-size: 1rem;
-            color: #27ae60;
+            color: #15803D;
             font-weight: 500;
         }
 
-        .status-badge {
-            padding: 0.4rem 1rem;
-            border-radius: 20px;
-            font-size: 0.8rem;
-            font-weight: 600;
-            display: inline-block;
-        }
-
-        .status-active {
-            background: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-
-        .status-inactive {
-            background: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
+        .budget-amount.text-danger {
+            color: #B91C1C;
         }
 
         /* Modal Styles */
@@ -847,6 +858,60 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
             color: #e74c3c;
             display: block;
         }
+
+        /* Pagination styles */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .page-link {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: #F9FAFB;
+            border: 2px solid #D1D5DB;
+            border-radius: 8px;
+            color: #111827;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .page-link:hover {
+            background: #F3F4F6;
+            border-color: #3498db;
+            color: #3498db;
+            transform: translateY(-2px);
+        }
+
+        .page-link.active {
+            background: #3498db;
+            border-color: #3498db;
+            color: white;
+            pointer-events: none;
+        }
+
+        .page-link i {
+            font-size: 0.8rem;
+            margin: 0 0.3rem;
+        }
+
+        /* Responsive pagination */
+        @media (max-width: 768px) {
+            .pagination {
+                gap: 0.3rem;
+            }
+            
+            .page-link {
+                padding: 0.4rem 0.8rem;
+                font-size: 0.9rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -998,6 +1063,38 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
                 </tbody>
             </table>
 
+            <!-- Add Pagination -->
+            <?php if ($total_pages > 1): ?>
+            <div class="pagination">
+                <?php if ($page > 1): ?>
+                    <a href="?year=<?php echo $year; ?>&month=<?php echo $month; ?>&page=<?php echo ($page-1); ?>" class="page-link">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </a>
+                <?php endif; ?>
+
+                <?php
+                $start_page = max(1, $page - 2);
+                $end_page = min($total_pages, $start_page + 4);
+                if ($end_page - $start_page < 4) {
+                    $start_page = max(1, $end_page - 4);
+                }
+                ?>
+
+                <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                    <a href="?year=<?php echo $year; ?>&month=<?php echo $month; ?>&page=<?php echo $i; ?>" 
+                       class="page-link <?php echo $i === $page ? 'active' : ''; ?>">
+                        <?php echo $i; ?>
+                    </a>
+                <?php endfor; ?>
+
+                <?php if ($page < $total_pages): ?>
+                    <a href="?year=<?php echo $year; ?>&month=<?php echo $month; ?>&page=<?php echo ($page+1); ?>" class="page-link">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </a>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+
             <!-- Add/Edit Modal -->
             <div id="budgetModal" class="modal">
                 <div class="modal-content">
@@ -1058,20 +1155,6 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
                         </button>
                     </form>
                 </div>
-            </div>
-
-            <!-- Message Container -->
-            <div class="message-container" style="margin: 20px;">
-                <?php 
-                if (isset($_SESSION["error"])) {
-                    echo "<div class='alert alert-danger'>" . $_SESSION["error"] . "</div>";
-                    unset($_SESSION["error"]);
-                }
-                if (isset($_SESSION["success"])) {
-                    echo "<div class='alert alert-success'>" . $_SESSION["success"] . "</div>";
-                    unset($_SESSION["success"]);
-                }
-                ?>
             </div>
         </div>
     </div>
@@ -1236,6 +1319,33 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
             if (validateBudgetAmount()) {
                 this.submit();
             }
+        });
+
+        // Show SweetAlert2 notifications for PHP session messages
+        document.addEventListener('DOMContentLoaded', function() {
+            <?php if (isset($_SESSION["error"])): ?>
+                Swal.fire({
+                    title: 'Error!',
+                    text: '<?php echo addslashes($_SESSION["error"]); ?>',
+                    icon: 'error',
+                    timer: 3000,
+                    timerProgressBar: true,
+                    showConfirmButton: false
+                });
+                <?php unset($_SESSION["error"]); ?>
+            <?php endif; ?>
+
+            <?php if (isset($_SESSION["success"])): ?>
+                Swal.fire({
+                    title: 'Success!',
+                    text: '<?php echo addslashes($_SESSION["success"]); ?>',
+                    icon: 'success',
+                    timer: 3000,
+                    timerProgressBar: true,
+                    showConfirmButton: false
+                });
+                <?php unset($_SESSION["success"]); ?>
+            <?php endif; ?>
         });
     </script>
 </body>

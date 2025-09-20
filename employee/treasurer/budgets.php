@@ -36,7 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $current_year = date('Y');
 $year = isset($_GET['year']) ? intval($_GET['year']) : $current_year;
 
-// Update the budgets query to include used amounts correctly
+// Pagination settings
+$items_per_page = 10;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$offset = ($page - 1) * $items_per_page;
+
+// Update the budgets query to include pagination
 $query = "SELECT b.*, 
           COALESCE(SUM(e.amount), 0) as used_amount,
           b.amount - COALESCE(SUM(e.amount), 0) as available_amount
@@ -44,13 +49,20 @@ $query = "SELECT b.*,
           LEFT JOIN expenses e ON b.id = e.budget_id
           WHERE YEAR(b.budget_date) = $year
           GROUP BY b.id, b.item, b.amount, b.budget_date
-          ORDER BY b.budget_date DESC";
+          ORDER BY b.budget_date DESC
+          LIMIT $items_per_page OFFSET $offset";
 
 $result = mysqli_query($connection, $query);
 $budgets = [];
 while ($row = mysqli_fetch_assoc($result)) {
     $budgets[] = $row;
 }
+
+// Get total number of records for pagination
+$total_records_query = "SELECT COUNT(*) as count FROM budgets WHERE YEAR(budget_date) = $year";
+$total_records_result = mysqli_query($connection, $total_records_query);
+$total_records = mysqli_fetch_assoc($total_records_result)['count'];
+$total_pages = ceil($total_records / $items_per_page);
 
 // Get years for filter dropdown with current year included
 $years_query = "SELECT DISTINCT YEAR(budget_date) as year FROM budgets 
@@ -347,36 +359,44 @@ if ($stats_result && $row = mysqli_fetch_assoc($stats_result)) {
 
         .budget-table {
             width: 100%;
-            background: white;
+            background: #F9FAFB;
             border-radius: 12px;
             overflow: hidden;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
         }
 
         .budget-table th {
-            background: #f8f9fa;
-            padding: 1rem 1.5rem;
+            background: #F3F4F6;
+            padding: 1.2rem 1.5rem;
             font-weight: 600;
-            color: #2c3e50;
+            color: #111827;
             text-align: left;
-            border-bottom: 2px solid #e9ecef;
+            border-bottom: 2px solid #D1D5DB;
         }
 
         .budget-table td {
-            padding: 1rem 1.5rem;
-            border-bottom: 1px solid #f1f1f1;
-            color: #2c3e50;
+            padding: 1.2rem 1.5rem;
+            border-bottom: 1px solid #D1D5DB;
+            color: #111827;
+        }
+
+        .budget-table tr:nth-child(even) {
+            background: #F3F4F6;
         }
 
         .budget-table tr:hover {
-            background: #f8f9fa;
+            background: #F3F4F6;
         }
 
         .budget-amount {
             font-family: 'Monaco', monospace;
             font-size: 1rem;
-            color: #27ae60;
+            color: #15803D;
             font-weight: 500;
+        }
+
+        .budget-amount.text-danger {
+            color: #B91C1C;
         }
 
         .status-badge {
@@ -709,6 +729,60 @@ if ($stats_result && $row = mysqli_fetch_assoc($stats_result)) {
             border-color: #3498db;
             box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
         }
+
+        /* Pagination Styles */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 0.5rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .page-link {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            background: white;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            color: #2c3e50;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .page-link:hover {
+            background: #f8f9fa;
+            border-color: #3498db;
+            color: #3498db;
+            transform: translateY(-2px);
+        }
+
+        .page-link.active {
+            background: #3498db;
+            border-color: #3498db;
+            color: white;
+            pointer-events: none;
+        }
+
+        .page-link i {
+            font-size: 0.8rem;
+            margin: 0 0.3rem;
+        }
+
+        /* Responsive pagination */
+        @media (max-width: 768px) {
+            .pagination {
+                gap: 0.3rem;
+            }
+            
+            .page-link {
+                padding: 0.4rem 0.8rem;
+                font-size: 0.9rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -852,6 +926,38 @@ if ($stats_result && $row = mysqli_fetch_assoc($stats_result)) {
                     <?php endforeach; ?>
                 </tbody>
             </table>
+
+            <!-- Pagination -->
+            <?php if ($total_pages > 1): ?>
+            <div class="pagination">
+                <?php if ($page > 1): ?>
+                    <a href="?year=<?php echo $year; ?>&page=<?php echo ($page-1); ?>" class="page-link">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </a>
+                <?php endif; ?>
+
+                <?php
+                $start_page = max(1, $page - 2);
+                $end_page = min($total_pages, $start_page + 4);
+                if ($end_page - $start_page < 4) {
+                    $start_page = max(1, $end_page - 4);
+                }
+                ?>
+
+                <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
+                    <a href="?year=<?php echo $year; ?>&page=<?php echo $i; ?>" 
+                       class="page-link <?php echo $i === $page ? 'active' : ''; ?>">
+                        <?php echo $i; ?>
+                    </a>
+                <?php endfor; ?>
+
+                <?php if ($page < $total_pages): ?>
+                    <a href="?year=<?php echo $year; ?>&page=<?php echo ($page+1); ?>" class="page-link">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </a>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
 
             <!-- Single cleaned modal -->
             <div id="budgetModal" class="modal" aria-hidden="true">

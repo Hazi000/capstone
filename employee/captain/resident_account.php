@@ -3,7 +3,7 @@ session_start();
 require_once '../../config.php';
 require_once '../../config/mail_config.php';
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'captain') {
     header("Location: ../index.php");
     exit();
 }
@@ -1312,7 +1312,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 			</div>
 			<div class="user-info">
 				<div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
-				<div class="user-role">Super Admin</div>
+				<div class="user-role">Captain</div>
 			</div>
 		</div>
 
@@ -1363,25 +1363,22 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     Disaster Management
                 </a>
 			</div>
-			<!-- Finance -->
-            <div class="nav-section">
-                <div class="nav-section-title">Finance</div>
-                <a href="budgets.php" class="nav-item">
-                    <i class="fas fa-wallet"></i>
-                    Budgets
-                </a>
-                <a href="expenses.php" class="nav-item">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    Expenses
-                </a>
-            </div>
+            <!-- Finance -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
 			<div class="nav-section">
 				<div class="nav-section-title">Settings</div>
-				<a href="account_management.php" class="nav-item">
-					<i class="fas fa-user-cog"></i>
-					Account Management
-				</a>
+				
 				<a href="settings.php" class="nav-item">
 					<i class="fas fa-cog"></i>
 					Settings

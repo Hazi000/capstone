@@ -811,6 +811,10 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                     <i class="fas fa-certificate"></i>
                     Certificates
                 </a>
+                 <a href="disaster_management.php" class="nav-item">
+                    <i class="fas fa-house-damage"></i>
+                    Disaster Management
+                </a>
             </div>
 
             <div class="nav-section">
@@ -819,6 +823,7 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                     <i class="fas fa-cog"></i>
                     Settings
                 </a>
+                 
             </div>
         </div>
 

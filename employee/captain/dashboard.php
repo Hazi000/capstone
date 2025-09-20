@@ -2,114 +2,39 @@
 session_start();
 require_once '../../config.php';
 
-// Check if user is logged in and is a treasurer
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'treasurer') {
+// Check if user is logged in and is a secretary
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'captain') {
     header("Location: ../index.php");
     exit();
 }
 
-// Get current month and year
-$current_month = date('m');
-$current_year = date('Y');
-
-// Initialize statistics array with default values
-$stats = [
-    'total_budget' => 0,
-    'total_expenses' => 0,
-    'monthly_expenses' => 0,
-    'available_budget' => 0,
-    'total_complaints' => 0,
-    'pending_complaints' => 0,
-    'total_appointments' => 0,
-    'pending_appointments' => 0,
-    'total_residents' => 0
-];
-
-// Update the budget query to use the new structure
-$budget_query = "SELECT COALESCE(SUM(amount), 0) as total FROM budgets WHERE YEAR(budget_date) = $current_year";
-$result = mysqli_query($connection, $budget_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['total_budget'] = mysqli_fetch_assoc($result)['total'];
-}
-
-// Update expenses query to use created_at
-$expenses_query = "SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE YEAR(created_at) = $current_year";
-$result = mysqli_query($connection, $expenses_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['total_expenses'] = mysqli_fetch_assoc($result)['total'];
-}
-
-// Calculate available budget
-$stats['available_budget'] = $stats['total_budget'] - $stats['total_expenses'];
-
-// Update monthly expenses query to use created_at
-$monthly_expenses_query = "SELECT COALESCE(SUM(amount), 0) as total FROM expenses 
-                         WHERE MONTH(created_at) = $current_month AND YEAR(created_at) = $current_year";
-$result = mysqli_query($connection, $monthly_expenses_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['monthly_expenses'] = mysqli_fetch_assoc($result)['total'];
-} else {
-    $stats['monthly_expenses'] = 0;
-}
-
-// Update expense categories query to use budget items instead of categories
-$expense_categories_query = "SELECT b.item as category, COALESCE(SUM(e.amount), 0) as total 
-                           FROM budgets b 
-                           LEFT JOIN expenses e ON b.id = e.budget_id 
-                           WHERE YEAR(b.budget_date) = $current_year 
-                           GROUP BY b.id, b.item";
-$expense_categories = mysqli_query($connection, $expense_categories_query);
-$expense_categories_data = [];
-if ($expense_categories) {
-    while($row = mysqli_fetch_assoc($expense_categories)) {
-        $expense_categories_data[] = $row;
-    }
-}
+// Get dashboard statistics
+$stats = [];
 
 // Count total complaints
 $complaint_query = "SELECT COUNT(*) as total FROM complaints";
 $result = mysqli_query($connection, $complaint_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['total_complaints'] = mysqli_fetch_assoc($result)['total'];
-} else {
-    $stats['total_complaints'] = 0;
-}
+$stats['total_complaints'] = mysqli_fetch_assoc($result)['total'];
 
 // Count pending complaints
 $pending_complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE status = 'pending'";
 $result = mysqli_query($connection, $pending_complaint_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
-} else {
-    $stats['pending_complaints'] = 0;
-}
+$stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
 
 // Count total appointments
 $appointment_query = "SELECT COUNT(*) as total FROM appointments";
 $result = mysqli_query($connection, $appointment_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['total_appointments'] = mysqli_fetch_assoc($result)['total'];
-} else {
-    $stats['total_appointments'] = 0;
-}
+$stats['total_appointments'] = mysqli_fetch_assoc($result)['total'];
 
 // Count pending appointments
 $pending_appointment_query = "SELECT COUNT(*) as pending FROM appointments WHERE status = 'pending'";
 $result = mysqli_query($connection, $pending_appointment_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['pending_appointments'] = mysqli_fetch_assoc($result)['pending'];
-} else {
-    $stats['pending_appointments'] = 0;
-}
+$stats['pending_appointments'] = mysqli_fetch_assoc($result)['pending'];
 
 // Count total residents
 $residents_query = "SELECT COUNT(*) as total FROM residents";
 $result = mysqli_query($connection, $residents_query);
-if ($result && mysqli_num_rows($result) > 0) {
-    $stats['total_residents'] = mysqli_fetch_assoc($result)['total'];
-} else {
-    $stats['total_residents'] = 0;
-}
+$stats['total_residents'] = mysqli_fetch_assoc($result)['total'];
 
 // Get recent complaints
 $recent_complaints_query = "SELECT c.*, r.full_name FROM complaints c 
@@ -145,84 +70,6 @@ WHERE (an.event_date IS NOT NULL AND an.event_date >= CURDATE() AND an.event_dat
 AND an.status = 'active'";
 
 $calendar_events = mysqli_query($connection, $calendar_events_query);
-
-// Build reusable arrays for recent items so we can render them and expose to JS
-$recent_complaints_data = [];
-if ($recent_complaints && mysqli_num_rows($recent_complaints) > 0) {
-    mysqli_data_seek($recent_complaints, 0);
-    while ($row = mysqli_fetch_assoc($recent_complaints)) {
-        $recent_complaints_data[] = $row;
-    }
-}
-
-$recent_announcements_data = [];
-if ($recent_announcements && mysqli_num_rows($recent_announcements) > 0) {
-    mysqli_data_seek($recent_announcements, 0);
-    while ($row = mysqli_fetch_assoc($recent_announcements)) {
-        $recent_announcements_data[] = $row;
-    }
-}
-
-// Recent appointments
-$recent_appointments_query = "SELECT a.*, r.full_name FROM appointments a LEFT JOIN residents r ON a.resident_id = r.id ORDER BY a.created_at DESC LIMIT 5";
-$recent_appointments = mysqli_query($connection, $recent_appointments_query);
-$recent_appointments_data = [];
-if ($recent_appointments && mysqli_num_rows($recent_appointments) > 0) {
-    mysqli_data_seek($recent_appointments, 0);
-    while ($row = mysqli_fetch_assoc($recent_appointments)) {
-        $recent_appointments_data[] = $row;
-    }
-}
-
-// Recent residents (newly registered)
-$recent_residents_query = "SELECT id, full_name, created_at FROM residents ORDER BY created_at DESC LIMIT 5";
-$recent_residents = mysqli_query($connection, $recent_residents_query);
-$recent_residents_data = [];
-if ($recent_residents && mysqli_num_rows($recent_residents) > 0) {
-    mysqli_data_seek($recent_residents, 0);
-    while ($row = mysqli_fetch_assoc($recent_residents)) {
-        $recent_residents_data[] = $row;
-    }
-}
-
-// Fetch budgets for detail panel
-$budgets_query = "SELECT description, amount, budget_date, status FROM budgets WHERE YEAR(created_at) = $current_year ORDER BY budget_date DESC";
-$budgets_result = mysqli_query($connection, $budgets_query);
-$budgets_data = [];
-if ($budgets_result && mysqli_num_rows($budgets_result) > 0) {
-    while ($row = mysqli_fetch_assoc($budgets_result)) {
-        $budgets_data[] = $row;
-    }
-}
-
-// Update the monthly expenses detail query
-$monthly_expenses_detail_query = "SELECT e.*, b.item as category 
-                                FROM expenses e 
-                                LEFT JOIN budgets b ON e.budget_id = b.id 
-                                WHERE MONTH(e.created_at) = $current_month 
-                                AND YEAR(e.created_at) = $current_year 
-                                ORDER BY e.created_at DESC";
-$monthly_expenses_detail_result = mysqli_query($connection, $monthly_expenses_detail_query);
-$monthly_expenses_data = [];
-if ($monthly_expenses_detail_result && mysqli_num_rows($monthly_expenses_detail_result) > 0) {
-    while ($row = mysqli_fetch_assoc($monthly_expenses_detail_result)) {
-        $monthly_expenses_data[] = $row;
-    }
-}
-
-// Fetch all expenses for total expenses detail panel
-$total_expenses_detail_query = "SELECT e.*, b.item as category, e.created_at as date 
-                               FROM expenses e 
-                               LEFT JOIN budgets b ON e.budget_id = b.id 
-                               WHERE YEAR(e.created_at) = $current_year 
-                               ORDER BY e.created_at DESC";
-$total_expenses_detail_result = mysqli_query($connection, $total_expenses_detail_query);
-$total_expenses_data = [];
-if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_result) > 0) {
-    while ($row = mysqli_fetch_assoc($total_expenses_detail_result)) {
-        $total_expenses_data[] = $row;
-    }
-}
 ?>
 
 <!DOCTYPE html>
@@ -230,14 +77,10 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin Dashboard - Barangay Management System</title>
+    <title>Captain Dashboard - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Add Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-3d"></script>
-    <!-- Add SweetAlert2 CSS and JS -->
-    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
+    <!-- Add SweetAlert2 CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
             margin: 0;
@@ -621,8 +464,6 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
             overflow: hidden;
-            max-width: 800px;  /* Add max-width */
-            margin: 0 auto;    /* Center the calendar */
         }
 
         .calendar-header {
@@ -689,7 +530,7 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
         .calendar-day {
             background: white;
             border: 1px solid #e0e0e0;
-            min-height: 60px;  /* Reduce height from 80px */
+            min-height: 80px;
             padding: 0.5rem;
             position: relative;
             transition: background 0.2s ease;
@@ -739,6 +580,99 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
+     
+
+        .upcoming-events {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .upcoming-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #eee;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .upcoming-title {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .upcoming-list {
+    max-height: 300px; /* Reduced from 400px */
+    overflow-y: auto;
+}
+
+        .upcoming-item {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid #f5f5f5;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .upcoming-item:last-child {
+            border-bottom: none;
+        }
+
+        .upcoming-date {
+            background: #f8f9fa;
+            padding: 0.5rem;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 60px;
+        }
+
+        .upcoming-date-day {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .upcoming-date-month {
+            font-size: 0.7rem;
+            color: #666;
+        }
+
+        .upcoming-info {
+            flex: 1;
+        }
+
+        .upcoming-info h4 {
+            font-size: 0.9rem;
+            color: #333;
+            margin-bottom: 0.25rem;
+        }
+
+        .upcoming-info p {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .upcoming-type {
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .upcoming-type.appointment {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .upcoming-type.announcement {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
         /* Mobile Responsiveness */
         @media (max-width: 1200px) {
             .dashboard-layout {
@@ -747,15 +681,6 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
             
             .recent-activities {
                 grid-template-columns: 1fr;
-            }
-
-            .stats-overview {
-                grid-template-columns: 1fr !important;
-            }
-            
-            .chart-container, .calendar-widget {
-                height: 500px !important;
-                margin-bottom: 2rem;
             }
         }
 
@@ -792,6 +717,10 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
                 min-height: 50px;
                 padding: 0.25rem;
             }
+
+            .upcoming-item {
+                padding: 0.75rem 1rem;
+            }
          @media (max-width: 768px) {
     .calendar-day {
         min-height: 60px;
@@ -823,37 +752,6 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
         .sidebar-overlay.active {
             display: block;
         }
-
-        .expense-chart-card {
-            padding: 1rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 200px;
-        }
-
-        .detail-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.9rem;
-        }
-
-        .detail-table th, .detail-table td {
-            padding: 0.5rem;
-            border-bottom: 1px solid #eee;
-            text-align: left;
-        }
-
-        .detail-table th {
-            background: #f8f9fa;
-            font-weight: 600;
-        }
-
-        .detail-amount {
-            text-align: right;
-            font-family: monospace;
-            font-size: 0.9rem;
-        }
     </style>
 </head>
 <body>
@@ -866,7 +764,7 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
-                <div class="user-role">Treasurer</div>
+                <div class="user-role">Captain</div>
             </div>
         </div>
 
@@ -880,16 +778,56 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
             </div>
 
             <div class="nav-section">
-                <div class="nav-section-title">Finance</div>
-                <a href="expense.php" class="nav-item">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    Expense
+                <div class="nav-section-title">Resident Management</div>
+                <a href="resident-profiling.php" class="nav-item">
+                    <i class="fas fa-users"></i>
+                    Resident Profiling
                 </a>
-                <a href="budgets.php" class="nav-item">
-                    <i class="fas fa-wallet"></i>
-                    Budgets
+                <a href="resident_account.php" class="nav-item">
+					<i class="fas fa-user-shield"></i>
+					Resident Accounts
+				</a>
+                
+            </div>
+
+            <div class="nav-section">
+                <div class="nav-section-title">Service Management</div>
+                <a href="community_service.php" class="nav-item">
+                    <i class="fas fa-hands-helping"></i>
+                    Community Service
+                </a>
+                <a href="announcements.php" class="nav-item">
+                    <i class="fas fa-bullhorn"></i>
+                    Announcements
+                </a>
+                <a href="complaints.php" class="nav-item">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    Complaints
+                    <?php if ($stats['pending_complaints'] > 0): ?>
+                        <span class="nav-badge"><?php echo $stats['pending_complaints']; ?></span>
+                    <?php endif; ?>
+                </a>
+                <a href="certificates.php" class="nav-item">
+                    <i class="fas fa-certificate"></i>
+                    Certificates
+                </a>
+                 <a href="disaster_management.php" class="nav-item">
+                    <i class="fas fa-house-damage"></i>
+                    Disaster Management
                 </a>
             </div>
+            <!-- Finance -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
@@ -933,15 +871,119 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
                 <p class="dashboard-subtitle">Here's what's happening in your barangay today</p>
             </div>
 
-            <!-- Update layout to position chart and calendar side by side -->
-            <div class="stats-overview" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem; align-items: start;">
-                <div class="chart-container" style="position: relative; height: 600px;">
-                    <canvas id="mainExpenseChart"></canvas>
+            <!-- Statistics Overview -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="color: #e74c3c;">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3><?php echo $stats['pending_complaints']; ?></h3>
+                        <p>Pending Complaints</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="color: #f39c12;">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3><?php echo $stats['pending_appointments']; ?></h3>
+                        <p>Pending Appointments</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="color: #27ae60;">
+                        <i class="fas fa-users"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3><?php echo $stats['total_residents']; ?></h3>
+                        <p>Total Residents</p>
+                    </div>
+                </div>
+                
+                <div class="stat-card">
+                    <div class="stat-icon" style="color: #3498db;">
+                        <i class="fas fa-check-circle"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3><?php echo $stats['total_complaints'] + $stats['total_appointments']; ?></h3>
+                        <p>Total Records</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Layout -->
+            <div class="dashboard-layout">
+                <div class="left-section">
+                    <!-- Recent Activities -->
+                    <div class="recent-activities">
+                        <div class="recent-card">
+                            <div class="recent-header">
+                                <h3 class="recent-title">
+                                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 0.5rem;"></i>
+                                    Recent Complaints
+                                </h3>
+                            </div>
+                            <div class="recent-list">
+                                <?php if (mysqli_num_rows($recent_complaints) > 0): ?>
+                                    <?php while ($complaint = mysqli_fetch_assoc($recent_complaints)): ?>
+                                        <div class="recent-item">
+                                            <div class="recent-info">
+                                                <h4><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></h4>
+                                                <p>by <?php echo htmlspecialchars($complaint['full_name'] ?? 'Unknown'); ?> • <?php echo date('M j, Y', strtotime($complaint['created_at'])); ?></p>
+                                            </div>
+                                            <span class="status-badge status-<?php echo $complaint['status']; ?>">
+                                                <?php echo ucfirst($complaint['status']); ?>
+                                            </span>
+                                        </div>
+                                    <?php endwhile; ?>
+                                <?php else: ?>
+                                    <div class="recent-item">
+                                        <div class="recent-info">
+                                            <p style="text-align: center; color: #666;">No complaints found</p>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+
+                        <div class="recent-card">
+                            <div class="recent-header">
+                                <h3 class="recent-title">
+                                    <i class="fas fa-bullhorn" style="color: #f39c12; margin-right: 0.5rem;"></i>
+                                    Recent Announcements
+                                </h3>
+                            </div>
+                            <div class="recent-list">
+                                <?php if (mysqli_num_rows($recent_announcements) > 0): ?>
+                                    <?php while ($announcement = mysqli_fetch_assoc($recent_announcements)): ?>
+                                        <div class="recent-item">
+                                            <div class="recent-info">
+                                                <h4><?php echo htmlspecialchars($announcement['title']); ?></h4>
+                                                <p>by <?php echo htmlspecialchars($announcement['created_by_name'] ?? 'Unknown'); ?> • <?php echo date('M j, Y', strtotime($announcement['created_at'])); ?></p>
+                                            </div>
+                                            <span class="priority-badge priority-<?php echo $announcement['priority']; ?>">
+                                                <?php echo ucfirst($announcement['priority']); ?>
+                                            </span>
+                                        </div>
+                                    <?php endwhile; ?>
+                                <?php else: ?>
+                                    <div class="recent-item">
+                                        <div class="recent-info">
+                                            <p style="text-align: center; color: #666;">No announcements found</p>
+                                        </div>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                <!-- Calendar moved to right side -->
+                <!-- Right Section - Calendar -->
                 <div class="right-section">
-                    <div class="calendar-widget" style="height: 600px;">
+                    <div class="calendar-widget">
                         <div class="calendar-header">
                             <div class="calendar-title">
                                 <i class="fas fa-calendar-alt"></i>
@@ -970,12 +1012,57 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
                             <div class="calendar-days-grid" id="calendarDays"></div>
                         </div>
                     </div>
-                </div>
-            </div>
 
-            <!-- Remove the old calendar section -->
-            <div class="dashboard-layout">
-                <!-- Empty or remove this section since calendar is moved -->
+                    <div class="upcoming-events">
+                        <div class="upcoming-header">
+                            <h3 class="upcoming-title">
+                                <i class="fas fa-clock"></i>
+                                Upcoming Events
+                            </h3>
+                        </div>
+                        <div class="upcoming-list">
+                            <?php 
+                            $events_data = [];
+                            mysqli_data_seek($calendar_events, 0);
+                            if (mysqli_num_rows($calendar_events) > 0): 
+                                while ($event = mysqli_fetch_assoc($calendar_events)): 
+                                    $events_data[] = $event;
+                            ?>
+                                <div class="upcoming-item">
+                                    <div class="upcoming-date">
+                                        <div class="upcoming-date-day"><?php echo date('j', strtotime($event['event_date'])); ?></div>
+                                        <div class="upcoming-date-month"><?php echo date('M', strtotime($event['event_date'])); ?></div>
+                                    </div>
+                                    <div class="upcoming-info">
+                                        <h4><?php echo htmlspecialchars($event['title']); ?></h4>
+                                        <p>
+                                            <?php if ($event['time']): ?>
+                                                <?php echo date('g:i A', strtotime($event['time'])); ?> • 
+                                            <?php endif; ?>
+                                            <?php if ($event['type'] == 'appointment'): ?>
+                                                with <?php echo htmlspecialchars($event['resident_name'] ?? 'Unknown'); ?>
+                                            <?php else: ?>
+                                                by <?php echo htmlspecialchars($event['resident_name'] ?? 'Unknown'); ?>
+                                            <?php endif; ?>
+                                        </p>
+                                    </div>
+                                    <span class="upcoming-type <?php echo $event['type']; ?>">
+                                        <?php echo ucfirst($event['type']); ?>
+                                    </span>
+                                </div>
+                            <?php 
+                                endwhile; 
+                            else: 
+                            ?>
+                                <div class="upcoming-item">
+                                    <div class="upcoming-info">
+                                        <p style="text-align: center; color: #666; padding: 2rem;">No upcoming events</p>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1074,13 +1161,13 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
         function handleLogout() {
             Swal.fire({
                 title: 'Logout Confirmation',
-                text: 'Are you sure you want to logout?',
+                text: "Are you sure you want to logout?",
                 icon: 'question',
                 showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
                 confirmButtonText: 'Yes, logout',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
+                cancelButtonText: 'Cancel'
             }).then((result) => {
                 if (result.isConfirmed) {
                     document.getElementById('logoutForm').submit();
@@ -1088,273 +1175,25 @@ if ($total_expenses_detail_result && mysqli_num_rows($total_expenses_detail_resu
             });
         }
 
-        // Data exported from PHP
-        const recentComplaints = <?php echo json_encode($recent_complaints_data ?? []); ?>;
-        const recentAnnouncements = <?php echo json_encode($recent_announcements_data ?? []); ?>;
-        const recentAppointments = <?php echo json_encode($recent_appointments_data ?? []); ?>;
-        const recentResidents = <?php echo json_encode($recent_residents_data ?? []); ?>;
-
-        // Initialize calendar on page load and wire up dashboard interactions
+        // Initialize calendar on page load
         document.addEventListener('DOMContentLoaded', function() {
             renderCalendar();
             
-            // Add 3D plugin configuration
-            const threeDConfig = {
-                enabled: true,
-                alpha: 30,      // Tilt angle
-                beta: 20,       // Rotation angle
-                depth: 45,      // Depth of 3D effect
-                donut: false    // Make it a full pie instead of doughnut
-            };
-
-            // Enhanced 3D main chart
-            const mainCtx = document.getElementById('mainExpenseChart').getContext('2d');
-            new Chart(mainCtx, {
-                type: 'pie',    // Changed from doughnut to pie
-                data: {
-                    labels: ['Available Budget', 'Monthly Expenses'],
-                    datasets: [{
-                        data: [
-                            <?php echo $stats['available_budget']; ?>,
-                            <?php echo $stats['monthly_expenses']; ?>
-                        ],
-                        backgroundColor: ['#16A34A', '#B91C1C'],
-                        borderWidth: 2,
-                        borderColor: '#ffffff',
-                        hoverOffset: 20
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: {
-                                font: { size: 16, weight: 'bold' },
-                                padding: 25
-                            }
-                        },
-                        title: {
-                            display: true,
-                            text: 'Budget Overview',
-                            font: { size: 24, weight: 'bold' },
-                            padding: 25
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function(context) {
-                                    return `${context.label}: ₱${context.raw.toLocaleString('en-PH', {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2
-                                    })}`;
-                                }
-                            }
-                        },
-                        '3d': threeDConfig
-                    },
-                    animation: {
-                        animateRotate: true,
-                        animateScale: true
-                    }
+            const currentPage = window.location.pathname.split('/').pop();
+            const navItems = document.querySelectorAll('.nav-item');
+            
+            navItems.forEach(item => {
+                const href = item.getAttribute('href');
+                if (href === currentPage) {
+                    item.classList.add('active');
                 }
             });
-
-            // Update expense categories chart with 3D effect
-            const expenseCtx = document.getElementById('expenseChart');
-            if (expenseCtx) {
-                new Chart(expenseCtx.getContext('2d'), {
-                    type: 'pie',    // Changed from doughnut to pie
-                    data: {
-                        labels: expenseCategories.map(cat => cat.category || 'Uncategorized'),
-                        datasets: [{
-                            data: expenseCategories.map(cat => cat.total),
-                            backgroundColor: expenseCategories.map(cat => 
-                                getCategoryColor(cat.category || 'Other')
-                            ),
-                            borderWidth: 2,
-                            borderColor: '#ffffff',
-                            hoverOffset: 20
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: {
-                            legend: {
-                                position: 'right',
-                                labels: {
-                                    boxWidth: 12,
-                                    font: { size: 11, weight: 'bold' }
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Budget Items Distribution',
-                                font: { size: 14, weight: 'bold' }
-                            },
-                            '3d': threeDConfig
-                        },
-                        animation: {
-                            animateRotate: true,
-                            animateScale: true
-                        }
-                    }
-                });
-            }
         });
-
-        function showDetailPanel(title, items) {
-            document.getElementById('detailTitle').textContent = title;
-            const container = document.getElementById('detailList');
-            container.innerHTML = '';
-            
-            if (!items || items.length === 0) {
-                container.innerHTML = '<p style="text-align:center;color:#666;padding:1rem;">No items to show</p>';
-                return;
-            }
-
-            const table = document.createElement('table');
-            table.className = 'detail-table';
-            
-            // Create table header based on type
-            const thead = document.createElement('thead');
-            let headerRow = '<tr>';
-            
-            if (title === 'Budgets') {
-                headerRow += `
-                    <th>Date</th>
-                    <th>Description</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                `;
-            } else {
-                headerRow += `
-                    <th>Date</th>
-                    <th>Category</th>
-                    <th>Amount</th>
-                `;
-            }
-            
-            headerRow += '</tr>';
-            thead.innerHTML = headerRow;
-            table.appendChild(thead);
-
-            // Create table body
-            const tbody = document.createElement('tbody');
-            items.forEach(it => {
-                const row = document.createElement('tr');
-                
-                if (title === 'Budgets') {
-                    row.innerHTML = `
-                        <td>${it.budget_date ? new Date(it.budget_date).toLocaleDateString() : ''}</td>
-                        <td>${escapeHtml(it.description)}</td>
-                        <td class="detail-amount">₱${Number(it.amount).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                        <td><span class="status-badge status-${it.status}">${escapeHtml(it.status)}</span></td>
-                    `;
-                } else {
-                    row.innerHTML = `
-                        <td>${it.date ? new Date(it.date).toLocaleDateString() : ''}</td>
-                        <td>${escapeHtml(it.category)}</td>
-                        <td class="detail-amount">₱${Number(it.amount).toLocaleString(undefined, {minimumFractionDigits:2})}</td>
-                    `;
-                }
-                
-                tbody.appendChild(row);
-            });
-            
-            table.appendChild(tbody);
-            container.appendChild(table);
-            
-            document.getElementById('dashboardDetail').style.display = 'block';
-            document.getElementById('dashboardDetail').scrollIntoView({behavior:'smooth'});
-        }
-
-        function escapeHtml(unsafe) {
-            if (!unsafe) return '';
-            return String(unsafe).replace(/[&<>"]+/g, function(match) {
-                const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
-                return map[match] || match;
-            });
-        }
 
         // Close sidebar when clicking on overlay
         document.getElementById('sidebarOverlay').addEventListener('click', function() {
             toggleSidebar();
         });
-
-        // Add color mapping constant
-        const EXPENSE_COLORS = {
-            'Personnel Services': '#2563EB',      // Blue
-            'MOOE': '#F97316',                   // Orange
-            'Capital Outlay': '#16A34A',         // Green
-            'DRRM': '#B91C1C',                   // Red
-            'Health Services': '#EAB308',        // Yellow
-            'Education': '#7C3AED',              // Purple
-            'Peace & Order': '#374151',          // Dark Gray
-            'Environmental': '#14B8A6',          // Teal
-            'GAD': '#A78BFA',                    // Lavender
-            'SK Fund': '#92400E',                // Brown
-            'Senior & PWD': '#60A5FA',           // Light Blue
-            'Other': '#94A3B8'                   // Default color
-        };
-
-        // Function to get color based on category
-        function getCategoryColor(category) {
-            const normalizedCategory = category.toLowerCase();
-            for (const [key, value] of Object.entries(EXPENSE_COLORS)) {
-                if (normalizedCategory.includes(key.toLowerCase())) {
-                    return value;
-                }
-            }
-            return EXPENSE_COLORS.Other;
-        }
-
-        // Update expense chart initialization with new data structure
-        const expenseCategories = <?php echo json_encode($expense_categories_data); ?>;
-
-        const ctx = document.getElementById('expenseChart').getContext('2d');
-        new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: expenseCategories.map(cat => cat.category || 'Uncategorized'),
-                datasets: [{
-                    data: expenseCategories.map(cat => cat.total),
-                    backgroundColor: expenseCategories.map(cat => 
-                        getCategoryColor(cat.category || 'Other')
-                    )
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: {
-                            boxWidth: 12,
-                            font: {
-                                size: 11,
-                                weight: 'bold'
-                            }
-                        }
-                    },
-                    title: {
-                        display: true,
-                        text: 'Budget Items Distribution',
-                        font: {
-                            size: 14,
-                            weight: 'bold'
-                        }
-                    },
-                    '3d': {
-                        alpha: 45,
-                        beta: 45,
-                        enabled: true,
-                        depth: 35
-                    }
-                },
-                cutout: '60%'
-            }
-        });
     </script>
-
-</body></html>
+</body>
+</html>

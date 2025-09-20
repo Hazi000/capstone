@@ -3,7 +3,7 @@ session_start();
 require_once '../../config.php';
 
 // Check if user is logged in and is a super_admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'secretary') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'captain') {
     header("Location: ../index.php");
     exit();
 }
@@ -1220,7 +1220,7 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
-                <div class="user-role">Secretary</div>
+                <div class="user-role">Captain</div>
             </div>
         </div>
 
@@ -1273,6 +1273,18 @@ $all_residents_result = mysqli_query($connection, $all_residents_query);
                     Disaster Management
                 </a>
             </div>
+            <!-- Finance -->
+			<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
