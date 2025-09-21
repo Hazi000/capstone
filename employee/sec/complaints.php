@@ -1694,7 +1694,7 @@ $current_result = mysqli_query($connection, $paginated_query);
                 }
 
                 Swal.fire({
-                    title: 'Invalid Submission',
+                    title: 'Invalid Submission', 
                     text: 'invalid the same person',
                     icon: 'error',
                     confirmButtonColor: '#d33',
