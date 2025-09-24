@@ -2053,7 +2053,7 @@ $current_result = mysqli_query($connection, $paginated_query);
                         const fields = {
                             'complaint_id': id,
                             'status': newStatus,
-                            'update_status': '1'
+                            'update_status': '1' 
                         };
 
                         for (const [key, value] of Object.entries(fields)) {
