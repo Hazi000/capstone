@@ -1331,6 +1331,10 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 					<i class="fas fa-users"></i>
 					Resident Profiling
 				</a>
+				 <a href="resident_family.php" class="nav-item">
+                    <i class="fas fa-user-friends"></i>
+                    Resident Family
+                </a>
 				<a href="resident_account.php" class="nav-item active">
 					<i class="fas fa-user-shield"></i>
 					Resident Accounts

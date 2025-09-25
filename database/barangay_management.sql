@@ -382,6 +382,7 @@ CREATE TABLE `residents` (
   `middle_initial` varchar(1) DEFAULT NULL,
   `last_name` varchar(100) NOT NULL,
   `full_name` varchar(255) DEFAULT NULL,
+  `suffix` varchar(50) DEFAULT NULL,                -- ADDED: optional suffix column
   `status` enum('active','inactive','pending') DEFAULT 'active',
   `age` int(11) NOT NULL,
   `contact_number` varchar(20) NOT NULL,

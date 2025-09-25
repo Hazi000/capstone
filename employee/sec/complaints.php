@@ -28,22 +28,25 @@ if ($_POST) {
         $complaint_id = intval($_POST['complaint_id']);
         $new_status = mysqli_real_escape_string($connection, $_POST['status']);
         
-        // Only get resolution and mediation date if status is being set to resolved
+        // Only get resolution if status is being set to resolved
         $resolution = ($new_status === 'resolved') ? mysqli_real_escape_string($connection, $_POST['resolution'] ?? '') : '';
-        $mediation_date = ($new_status === 'resolved' && !empty($_POST['mediation_date'])) ? 
-                         mysqli_real_escape_string($connection, $_POST['mediation_date']) : NULL;
-        
+
         $update_query = "UPDATE complaints SET status = '$new_status'";
         
         // Add resolution and mediation date only if status is resolved
         if ($new_status === 'resolved') {
-            $update_query .= ", resolution = '$resolution', mediation_date = '$mediation_date'";
+            // Set mediation_date to current server datetime (the day it was resolved)
+            $update_query .= ", resolution = '$resolution', mediation_date = NOW()";
         }
         
         $update_query .= " WHERE id = $complaint_id";
         
         if (mysqli_query($connection, $update_query)) {
-            $_SESSION['success_message'] = "Complaint status updated to " . ucfirst($new_status) . " successfully!";
+            if ($new_status === 'in-progress') {
+                $_SESSION['success_message'] = "Complaint status updated successfully!";
+            } else {
+                $_SESSION['success_message'] = "Complaint status updated to " . ucfirst($new_status) . " successfully!";
+            }
             header("Location: " . $_SERVER['PHP_SELF']);
             exit();
         } else {
@@ -153,7 +156,29 @@ if ($_POST) {
 
 // Move success message handling here, after redirects
 if (isset($_SESSION['success_message'])) {
-    $success_message = $_SESSION['success_message'];
+    $raw_message = $_SESSION['success_message'];
+    // treat any status update as short-timer for SweetAlert
+    $is_status_update = (strpos(strtolower($raw_message), 'status updated') !== false) || (strpos(strtolower($raw_message), 'complaint status updated') !== false);
+
+    // Output SweetAlert for all success messages
+    echo "<script>
+        document.addEventListener('DOMContentLoaded', function() {
+            Swal.fire({
+                title: 'Success!',
+                text: '" . addslashes($raw_message) . "',
+                icon: 'success',
+                timer: " . ($is_status_update ? "1500" : "2000") . ",
+                timerProgressBar: true,
+                showConfirmButton: false
+            });
+        });
+    </script>";
+
+    // Do NOT set inline $success_message for any status-update messages
+    if (!$is_status_update) {
+        $success_message = $raw_message;
+    }
+
     unset($_SESSION['success_message']); // Clear the message after displaying
 }
 
@@ -250,7 +275,12 @@ $all_complaints_query = "SELECT c.id, c.nature_of_complaint, c.description, c.st
                         ORDER BY c.created_at DESC";
 $all_complaints_result = mysqli_query($connection, $all_complaints_query);
 
-// Change the default filter from 'recent' to 'pending'
+// Add queries for pending-only and in-progress by reusing the active/pending_complaints_query
+$pending_only_query = str_replace("c.status IN ('pending', 'in-progress')", "c.status = 'pending'", $pending_complaints_query);
+$inprogress_complaints_query = str_replace("c.status IN ('pending', 'in-progress')", "c.status = 'in-progress'", $pending_complaints_query);
+
+// Change the default filter from 'recent' to 'active'
+// Change the default filter to 'pending'
 $filter = isset($_GET['filter']) ? $_GET['filter'] : 'pending';
 $current_result = null;
 
@@ -272,14 +302,32 @@ switch($filter) {
                        " . (!empty($where_conditions) ? " AND " . implode(" AND ", $where_conditions) : "");
         $table_title = 'Resolved Complaints';
         break;
-    default: // Default is 'pending'
-        $base_query = $pending_complaints_query;
+    case 'in-progress':
+        $base_query = $inprogress_complaints_query;
+        $count_query = "SELECT COUNT(*) as total FROM complaints c 
+                       LEFT JOIN residents r ON c.resident_id = r.id 
+                       LEFT JOIN residents dr ON c.defendant_resident_id = dr.id
+                       WHERE c.status = 'in-progress' 
+                       " . (!empty($where_conditions) ? " AND " . implode(" AND ", $where_conditions) : "");
+        $table_title = 'In-Progress Complaints';
+        break;
+    case 'pending':
+        $base_query = $pending_only_query;
+        $count_query = "SELECT COUNT(*) as total FROM complaints c 
+                       LEFT JOIN residents r ON c.resident_id = r.id 
+                       LEFT JOIN residents dr ON c.defendant_resident_id = dr.id
+                       WHERE c.status = 'pending' 
+                       " . (!empty($where_conditions) ? " AND " . implode(" AND ", $where_conditions) : "");
+        $table_title = 'Pending Complaints';
+        break;
+    default: // 'active' (pending + in-progress)
+        $base_query = $pending_complaints_query; // existing query selects IN ('pending','in-progress')
         $count_query = "SELECT COUNT(*) as total FROM complaints c 
                        LEFT JOIN residents r ON c.resident_id = r.id 
                        LEFT JOIN residents dr ON c.defendant_resident_id = dr.id
                        WHERE c.status IN ('pending', 'in-progress') 
                        " . (!empty($where_conditions) ? " AND " . implode(" AND ", $where_conditions) : "");
-        $table_title = 'Pending Complaints';
+        $table_title = 'Active Complaints';
         break;
 }
 
@@ -1389,6 +1437,10 @@ $current_result = mysqli_query($connection, $paginated_query);
                     <i class="fas fa-users"></i>
                     Resident Profiling
                 </a>
+                <a href="resident_family.php" class="nav-item">
+                    <i class="fas fa-user-friends"></i>
+                    Resident Family
+                </a>
                 <a href="resident_account.php" class="nav-item">
 					<i class="fas fa-user-shield"></i>
 					Resident Accounts
@@ -1499,9 +1551,11 @@ $current_result = mysqli_query($connection, $paginated_query);
                                     <i class="fas fa-search"></i> Search
                                 </button>
                                 <select name="filter" class="compact-select" onchange="this.form.submit()">
+                                    <option value="active" <?php echo $filter === 'active' ? 'selected' : ''; ?>>Active</option>
                                     <option value="pending" <?php echo $filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                                    <option value="all" <?php echo $filter === 'all' ? 'selected' : ''; ?>>All Time</option>
+                                    <option value="in-progress" <?php echo $filter === 'in-progress' ? 'selected' : ''; ?>>In-Progress</option>
                                     <option value="resolved" <?php echo $filter === 'resolved' ? 'selected' : ''; ?>>Resolved</option>
+                                    <option value="all" <?php echo $filter === 'all' ? 'selected' : ''; ?>>All Time</option>
                                 </select>
                                 <button type="button" class="compact-btn" onclick="openCreateModal()">
                                     <i class="fas fa-plus"></i> New Complaint
@@ -1514,7 +1568,7 @@ $current_result = mysqli_query($connection, $paginated_query);
                 <table class="complaints-table">
                     <thead>
                         <tr>
-                            <th>ID</th>
+                            <th>#</th>
                             <th>Nature of Complaint</th>
                             <th>Complainant</th>
                             <th>Defendant</th>
@@ -1525,6 +1579,7 @@ $current_result = mysqli_query($connection, $paginated_query);
                     </thead>
                     <tbody>
                         <?php 
+                        $row_number = 1 + $offset;
                         if (mysqli_num_rows($current_result) > 0):
                             while ($complaint = mysqli_fetch_assoc($current_result)): 
                                 // Prepare sanitized data for JS
@@ -1542,7 +1597,7 @@ $current_result = mysqli_query($connection, $paginated_query);
                                 ]);
                         ?>
                             <tr>
-                                <td>#<?php echo $complaint['id']; ?></td>
+                                <td><?php echo $row_number++; ?></td>
                                 <td>
                                     <strong><?php echo htmlspecialchars($complaint['nature_of_complaint']); ?></strong>
                                 </td>
@@ -1563,14 +1618,14 @@ $current_result = mysqli_query($connection, $paginated_query);
                                         <i class="fas fa-eye"></i> View
                                     </button>
                                     <?php if ($complaint['status'] === 'pending'): ?>
-                            <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, 'in-progress')">
-                                <i class="fas fa-play"></i> Set In Progress
-                            </button>
-                        <?php elseif ($complaint['status'] === 'in-progress'): ?>
-                            <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, 'resolved')">
-                                <i class="fas fa-check"></i> Set Resolved
-                            </button>
-                        <?php endif; ?>
+                                        <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, 'in-progress')">
+                                            <i class="fas fa-play"></i> Set In Progress
+                                        </button>
+                                    <?php elseif ($complaint['status'] === 'in-progress'): ?>
+                                        <button class="action-btn btn-success" onclick="updateStatus(<?php echo $complaint['id']; ?>, 'resolved')">
+                                            <i class="fas fa-check"></i> Set Resolved
+                                        </button>
+                                    <?php endif; ?>
                                 </td>
                             </tr>
                         <?php 
@@ -1680,9 +1735,8 @@ $current_result = mysqli_query($connection, $paginated_query);
             const dLast = document.getElementById('defendantLastName').value || '';
 
             // normalize: lowercase, collapse whitespace
-            const normalize = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
-            const complainantName = normalize(`${cFirst} ${cMiddle} ${cLast}`);
-            const defendantName = normalize(`${dFirst} ${dMiddle} ${dLast}`);
+            const complainantName = `${cFirst} ${cMiddle} ${cLast}`.toLowerCase().replace(/\s+/g, ' ').trim();
+            const defendantName = `${dFirst} ${dMiddle} ${dLast}`.toLowerCase().replace(/\s+/g, ' ').trim();
 
             if (complainantName && defendantName && complainantName === defendantName) {
                 // remove any prior errors, close modal (closeModal calls clearErrors)
@@ -1708,8 +1762,69 @@ $current_result = mysqli_query($connection, $paginated_query);
             return true;
         }
 
-        // Initialize search functionality
-        document.addEventListener('DOMContentLoaded', function() {
+        // Add these new validation functions
+function validateNameInput(input) {
+    // Remove any non-letter characters except spaces
+    input.value = input.value.replace(/[^A-Za-z\s]/g, '');
+    
+    // Show validation feedback
+    if (input.value && !input.value.match(/^[A-Za-z\s]{2,}$/)) {
+        input.style.borderColor = '#dc3545';
+        showInputError(input, 'Name must contain only letters');
+    } else {
+        input.style.borderColor = '';
+        removeInputError(input);
+    }
+}
+
+function validateMiddleInitial(input) {
+    // Remove any non-letter characters except period
+    input.value = input.value.replace(/[^A-Za-z.]/g, '');
+    
+    // Enforce single letter with optional period
+    if (input.value.length > 0 && !input.value.match(/^[A-Za-z]\.?$/)) {
+        input.style.borderColor = '#dc3545';
+        showInputError(input, 'Middle initial should be a single letter with optional period');
+    } else {
+        input.style.borderColor = '';
+        removeInputError(input);
+    }
+}
+
+function validateContactNumber(input) {
+    // Remove any non-digit characters
+    input.value = input.value.replace(/\D/g, '');
+    
+    // Show validation feedback
+    if (input.value && !input.value.match(/^09\d{9}$/)) {
+        input.style.borderColor = '#dc3545';
+        showInputError(input, 'Contact must start with 09 and have 11 digits');
+    } else {
+        input.style.borderColor = '';
+        removeInputError(input);
+    }
+}
+
+function showInputError(input, message) {
+    removeInputError(input); // Remove any existing error
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'validation-error';
+    errorDiv.style.color = '#dc3545';
+    errorDiv.style.fontSize = '0.8rem';
+    errorDiv.style.marginTop = '0.25rem';
+    errorDiv.textContent = message;
+    input.parentNode.appendChild(errorDiv);
+}
+
+function removeInputError(input) {
+    const existingError = input.parentNode.querySelector('.validation-error');
+    if (existingError) {
+        existingError.remove();
+    }
+}
+
+// Update the document ready function to add input validation
+document.addEventListener('DOMContentLoaded', function() {
     // Elements
     const complainantFirst = document.getElementById('complainantFirstName');
     const complainantResults = document.getElementById('complainantSearchResults');
@@ -1975,7 +2090,7 @@ $current_result = mysqli_query($connection, $paginated_query);
                        'Are you sure you want to resolve this complaint?';
 
             if (newStatus === 'resolved') {
-                // Show modal with resolution form
+                // Show modal with resolution form (mediation date removed — server will set it to NOW())
                 Swal.fire({
                     title: title,
                     text: text,
@@ -1985,10 +2100,6 @@ $current_result = mysqli_query($connection, $paginated_query);
                             <label class="form-label">Resolution Details</label>
                             <textarea id="swal-resolution" class="form-textarea" style="width: 100%; margin: 10px 0;" required></textarea>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Mediation Date</label>
-                            <input type="date" id="swal-mediation-date" class="form-input" style="width: 100%;" required>
-                        </div>
                     `,
                     showCancelButton: true,
                     confirmButtonText: 'Update',
@@ -1996,18 +2107,17 @@ $current_result = mysqli_query($connection, $paginated_query);
                     confirmButtonColor: '#27ae60',
                     cancelButtonColor: '#95a5a6',
                     preConfirm: () => {
-                        const resolution = document.getElementById('swal-resolution').value;
-                        const mediationDate = document.getElementById('swal-mediation-date').value;
-                        
-                        if (!resolution || !mediationDate) {
-                            Swal.showValidationMessage('Please fill in all fields');
+                        const resolution = document.getElementById('swal-resolution').value.trim();
+                        if (!resolution) {
+                            Swal.showValidationMessage('Please provide resolution details');
+
                             return false;
                         }
-                        return { resolution, mediationDate };
+                        return { resolution };
                     }
                 }).then((result) => {
                     if (result.isConfirmed) {
-                        // Create and submit form
+                        // Create and submit form (mediation_date removed)
                         const form = document.createElement('form');
                         form.method = 'POST';
                         form.style.display = 'none';
@@ -2016,7 +2126,6 @@ $current_result = mysqli_query($connection, $paginated_query);
                             'complaint_id': id,
                             'status': newStatus,
                             'resolution': result.value.resolution,
-                            'mediation_date': result.value.mediationDate,
                             'update_status': '1'
                         };
 
@@ -2070,6 +2179,7 @@ $current_result = mysqli_query($connection, $paginated_query);
                 });
             }
         }
+        
 
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
@@ -2109,6 +2219,10 @@ $current_result = mysqli_query($connection, $paginated_query);
                 }
             });
         }
+
+       
+
+       
 
         // Close sidebar when clicking on overlay
         document.getElementById('sidebarOverlay').addEventListener('click', function() {
@@ -2318,10 +2432,6 @@ $current_result = mysqli_query($connection, $paginated_query);
                     <label class="form-label">Resolution Details</label>
                     <textarea name="resolution" class="form-textarea" id="resolutionInput"></textarea>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Mediation Date</label>
-                    <input type="date" name="mediation_date" class="form-input" id="mediationInput">
-                </div>
             </div>
             <div class="modal-actions">
                 <button type="button" class="action-btn btn-secondary" onclick="closeModal('statusModal')">Cancel</button>
@@ -2360,6 +2470,10 @@ $current_result = mysqli_query($connection, $paginated_query);
                 <h3>Resolution Information</h3>
                 <p><strong>Resolution:</strong> <span id="viewResolution"></span></p>
                 <p><strong>Mediation Date:</strong> <span id="viewMediationDate"></span></p>
+            </div>
+        </div>
+    </div>
+</div>
             </div>
         </div>
     </div>

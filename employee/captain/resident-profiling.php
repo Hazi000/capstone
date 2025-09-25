@@ -16,52 +16,108 @@ if (!file_exists($upload_dir)) {
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
+        // add_resident handling: after reading inputs
         if ($_POST['action'] === 'add_resident') {
+            $existing_id = intval($_POST['existing_resident_id'] ?? 0); // NEW: optional existing resident id
             $first_name = mysqli_real_escape_string($connection, $_POST['first_name']);
             $middle_initial = mysqli_real_escape_string($connection, $_POST['middle_initial']);
             $last_name = mysqli_real_escape_string($connection, $_POST['last_name']);
+            // Normalize contact and age
             $age = intval($_POST['age']);
             $contact_number = mysqli_real_escape_string($connection, $_POST['contact_number']);
-            $status = mysqli_real_escape_string($connection, $_POST['status']);
-            $zone = mysqli_real_escape_string($connection, $_POST['zone']);
-            
-            // Create full name
-            $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
-            
-            // Handle photo upload and face data
-            $photo_path = null;
-            $face_descriptor = null;
-            
-            if (!empty($_POST['photo_data'])) {
-                $photo_data = $_POST['photo_data'];
-                $photo_data = str_replace('data:image/jpeg;base64,', '', $photo_data);
-                $photo_data = str_replace('data:image/png;base64,', '', $photo_data);
-                $photo_data = str_replace(' ', '+', $photo_data);
-                $photo_binary = base64_decode($photo_data);
-                
-                // Generate unique filename
-                $photo_filename = uniqid('resident_') . '.jpg';
-                $photo_path = $upload_dir . $photo_filename;
-                
-                // Save the image
-                file_put_contents($photo_path, $photo_binary);
-                $photo_path = 'uploads/residents/' . $photo_filename; // Store relative path in database
-            }
-            
-            // Get face descriptor if provided
-            if (!empty($_POST['face_descriptor'])) {
-                $face_descriptor = mysqli_real_escape_string($connection, $_POST['face_descriptor']);
-            }
-            
-            $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, age, contact_number, status, zone, photo_path, face_descriptor) 
-                           VALUES ('$first_name', '$middle_initial', '$last_name', '$full_name', $age, '$contact_number', '$status', '$zone', " . 
-                           ($photo_path ? "'$photo_path'" : "NULL") . ", " .
-                           ($face_descriptor ? "'$face_descriptor'" : "NULL") . ")";
-            
-            if (mysqli_query($connection, $insert_query)) {
-                $success_message = "Resident added successfully with face data!";
+            // Normalize contact to digits only and validate: must be 11 digits and start with 09
+            $contact_number = preg_replace('/\D/', '', $contact_number);
+            if (!preg_match('/^09\d{9}$/', $contact_number)) {
+                $error_message = "Contact number must be 11 digits and start with 09.";
             } else {
-                $error_message = "Error adding resident: " . mysqli_error($connection);
+                // proceed only when contact is valid
+                // Suffix (optional)
+                $suffix = isset($_POST['suffix']) ? mysqli_real_escape_string($connection, trim($_POST['suffix'])) : null;
+                // Set default zone if empty/null
+                $zone = !empty($_POST['zone']) ? mysqli_real_escape_string($connection, $_POST['zone']) : 'Zone 1A';
+
+                // Create full name (append suffix if provided)
+                $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
+                if (!empty($suffix)) {
+                    $full_name .= ' ' . $suffix;
+                }
+
+                // Handle photo upload and face data
+                $photo_path = null;
+                $face_descriptor = null;
+
+                if (!empty($_POST['photo_data'])) {
+                    $photo_data = $_POST['photo_data'];
+                    $photo_data = str_replace('data:image/jpeg;base64,', '', $photo_data);
+                    $photo_data = str_replace('data:image/png;base64,', '', $photo_data);
+                    $photo_data = str_replace(' ', '+', $photo_data);
+                    $photo_binary = base64_decode($photo_data);
+
+                    // Generate unique filename
+                    $photo_filename = uniqid('resident_') . '.jpg';
+                    $photo_path = $upload_dir . $photo_filename;
+
+                    // Save the image
+                    file_put_contents($photo_path, $photo_binary);
+                    $photo_path = 'uploads/residents/' . $photo_filename; // Store relative path in database
+                }
+
+                // Get face descriptor if provided
+                if (!empty($_POST['face_descriptor'])) {
+                    $face_descriptor = mysqli_real_escape_string($connection, $_POST['face_descriptor']);
+                }
+
+                // If existing resident ID provided, update that resident instead of inserting new
+                if ($existing_id > 0) {
+                    // Build update query; set suffix = NULL and status = NULL as requested.
+                    $update_parts = [];
+                    $update_parts[] = "first_name = '$first_name'";
+                    $update_parts[] = "middle_initial = '$middle_initial'";
+                    $update_parts[] = "last_name = '$last_name'";
+                    $update_parts[] = "full_name = '$full_name'";
+                    $update_parts[] = "age = $age";
+                    $update_parts[] = "contact_number = '$contact_number'";
+                    $update_parts[] = "zone = '$zone'";
+
+                    if ($photo_path) {
+                        $update_parts[] = "photo_path = '$photo_path'";
+                    }
+
+                    if ($face_descriptor) {
+                        $update_parts[] = "face_descriptor = '$face_descriptor'";
+                    }
+
+                    // include suffix column properly (allow NULL)
+                    if ($suffix !== null && $suffix !== '') {
+                        $update_parts[] = "suffix = '$suffix'";
+                    } else {
+                        $update_parts[] = "suffix = NULL";
+                    }
+
+                    // Attempt to set suffix NULL and clear status (if columns exist)
+                    $update_parts[] = "status = NULL";
+
+                    $update_query = "UPDATE residents SET " . implode(', ', $update_parts) . ", updated_at = CURRENT_TIMESTAMP WHERE id = $existing_id";
+
+                    if (mysqli_query($connection, $update_query)) {
+                        $success_message = "Existing resident updated and face data linked successfully.";
+                    } else {
+                        $error_message = "Error updating existing resident: " . mysqli_error($connection);
+                    }
+                } else {
+                    // Regular insert when no existing resident id
+                    $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, suffix, age, contact_number, zone, photo_path, face_descriptor) 
+                                   VALUES ('$first_name', '$middle_initial', '$last_name', '$full_name', " . 
+                                   ($suffix ? "'$suffix'" : "NULL") . ", $age, '$contact_number', '$zone', " . 
+                                   ($photo_path ? "'$photo_path'" : "NULL") . ", " .
+                                   ($face_descriptor ? "'$face_descriptor'" : "NULL") . ")";
+
+                    if (mysqli_query($connection, $insert_query)) {
+                        $success_message = "Resident added successfully with face data!";
+                    } else {
+                        $error_message = "Error adding resident: " . mysqli_error($connection);
+                    }
+                }
             }
         } elseif ($_POST['action'] === 'update_resident') {
             $id = intval($_POST['resident_id']);
@@ -70,66 +126,80 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $last_name = mysqli_real_escape_string($connection, $_POST['last_name']);
             $age = intval($_POST['age']);
             $contact_number = mysqli_real_escape_string($connection, $_POST['contact_number']);
-            $status = mysqli_real_escape_string($connection, $_POST['status']);
-            $zone = mysqli_real_escape_string($connection, $_POST['zone']);
-            
-            // Create full name
-            $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
-            
-            // Handle photo update
-            $photo_update = "";
-            $face_update = "";
-            
-            if (!empty($_POST['photo_data'])) {
-                // Delete old photo if exists
-                $old_photo_query = "SELECT photo_path FROM residents WHERE id = $id";
-                $old_photo_result = mysqli_query($connection, $old_photo_query);
-                if ($old_photo_row = mysqli_fetch_assoc($old_photo_result)) {
-                    if ($old_photo_row['photo_path'] && file_exists('../../' . $old_photo_row['photo_path'])) {
-                        unlink('../../' . $old_photo_row['photo_path']);
-                    }
+            // Normalize contact to digits only and validate: must be 11 digits and start with 09
+            $contact_number = preg_replace('/\D/', '', $contact_number);
+            if (!preg_match('/^09\d{9}$/', $contact_number)) {
+                $error_message = "Contact number must be 11 digits and start with 09.";
+            } else {
+                // Suffix (optional)
+                $suffix = isset($_POST['suffix']) ? mysqli_real_escape_string($connection, trim($_POST['suffix'])) : null;
+                // Set default zone if empty/null 
+                $zone = !empty($_POST['zone']) ? mysqli_real_escape_string($connection, $_POST['zone']) : 'Zone 1A';
+                
+                // Create full name including suffix
+                $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
+                if (!empty($suffix)) {
+                    $full_name .= ' ' . $suffix;
                 }
                 
-                $photo_data = $_POST['photo_data'];
-                $photo_data = str_replace('data:image/jpeg;base64,', '', $photo_data);
-                $photo_data = str_replace('data:image/png;base64,', '', $photo_data);
-                $photo_data = str_replace(' ', '+', $photo_data);
-                $photo_binary = base64_decode($photo_data);
+                // Handle photo update
+                $photo_update = "";
+                $face_update = "";
                 
-                // Generate unique filename
-                $photo_filename = uniqid('resident_') . '.jpg';
-                $photo_path = $upload_dir . $photo_filename;
+                if (!empty($_POST['photo_data'])) {
+                    // Delete old photo if exists
+                    $old_photo_query = "SELECT photo_path FROM residents WHERE id = $id";
+                    $old_photo_result = mysqli_query($connection, $old_photo_query);
+                    if ($old_photo_row = mysqli_fetch_assoc($old_photo_result)) {
+                        if ($old_photo_row['photo_path'] && file_exists('../../' . $old_photo_row['photo_path'])) {
+                            unlink('../../' . $old_photo_row['photo_path']);
+                        }
+                    }
+                    
+                    $photo_data = $_POST['photo_data'];
+                    $photo_data = str_replace('data:image/jpeg;base64,', '', $photo_data);
+                    $photo_data = str_replace('data:image/png;base64,', '', $photo_data);
+                    $photo_data = str_replace(' ', '+', $photo_data);
+                    $photo_binary = base64_decode($photo_data);
+                    
+                    // Generate unique filename
+                    $photo_filename = uniqid('resident_') . '.jpg';
+                    $photo_path = $upload_dir . $photo_filename;
+                    
+                    // Save the image
+                    file_put_contents($photo_path, $photo_binary);
+                    $photo_path = 'uploads/residents/' . $photo_filename;
+                    $photo_update = ", photo_path = '$photo_path'";
+                }
                 
-                // Save the image
-                file_put_contents($photo_path, $photo_binary);
-                $photo_path = 'uploads/residents/' . $photo_filename;
-                $photo_update = ", photo_path = '$photo_path'";
-            }
-            
-            // Update face descriptor if provided
-            if (!empty($_POST['face_descriptor'])) {
-                $face_descriptor = mysqli_real_escape_string($connection, $_POST['face_descriptor']);
-                $face_update = ", face_descriptor = '$face_descriptor'";
-            }
-            
-            $update_query = "UPDATE residents SET 
-                           first_name = '$first_name', 
-                           middle_initial = '$middle_initial', 
-                           last_name = '$last_name', 
-                           full_name = '$full_name',
-                           age = $age, 
-                           contact_number = '$contact_number', 
-                           status = '$status',
-                           zone = '$zone'
-                           $photo_update
-                           $face_update,
-                           updated_at = CURRENT_TIMESTAMP
-                           WHERE id = $id";
-            
-            if (mysqli_query($connection, $update_query)) {
-                $success_message = "Resident updated successfully!";
-            } else {
-                $error_message = "Error updating resident: " . mysqli_error($connection);
+                // Update face descriptor if provided
+                if (!empty($_POST['face_descriptor'])) {
+                    $face_descriptor = mysqli_real_escape_string($connection, $_POST['face_descriptor']);
+                    $face_update = ", face_descriptor = '$face_descriptor'";
+                }
+                
+                // include suffix in update query
+                $suffix_update = ($suffix !== null && $suffix !== '') ? ", suffix = '$suffix'" : ", suffix = NULL";
+                
+                $update_query = "UPDATE residents SET 
+                               first_name = '$first_name', 
+                               middle_initial = '$middle_initial', 
+                               last_name = '$last_name', 
+                               full_name = '$full_name',
+                               age = $age, 
+                               contact_number = '$contact_number', 
+                               zone = '$zone'
+                               $photo_update
+                               $face_update
+                               $suffix_update,
+                               updated_at = CURRENT_TIMESTAMP
+                               WHERE id = $id";
+                
+                if (mysqli_query($connection, $update_query)) {
+                    $success_message = "Resident updated successfully!";
+                } else {
+                    $error_message = "Error updating resident: " . mysqli_error($connection);
+                }
             }
         } elseif ($_POST['action'] === 'delete_resident') {
             $id = intval($_POST['resident_id']);
@@ -153,28 +223,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($_POST['action'] === 'search_face') {
             // Handle face search
             $response = array('found' => false);
-            
+
             if (!empty($_POST['search_descriptor'])) {
                 $search_descriptor = $_POST['search_descriptor'];
-                
+
                 // Get all residents with face descriptors
-                $face_query = "SELECT id, full_name, photo_path, face_descriptor FROM residents WHERE face_descriptor IS NOT NULL";
+                $face_query = "SELECT id, first_name, middle_initial, last_name, age, contact_number, status, zone, full_name, photo_path, face_descriptor FROM residents WHERE face_descriptor IS NOT NULL";
                 $face_result = mysqli_query($connection, $face_query);
-                
+
                 if ($face_result) {
                     $response['residents'] = array();
                     while ($row = mysqli_fetch_assoc($face_result)) {
                         $response['residents'][] = array(
                             'id' => $row['id'],
+                            'first_name' => $row['first_name'],
+                            'middle_initial' => $row['middle_initial'],
+                            'last_name' => $row['last_name'],
                             'full_name' => $row['full_name'],
+                            'age' => $row['age'],
+                            'contact_number' => $row['contact_number'],
+                            'status' => $row['status'],
+                            'zone' => $row['zone'],
                             'photo_path' => $row['photo_path'],
-                            'face_descriptor' => $row['face_descriptor']
+                            'face_descriptor' => $row['face_descriptor'],
+                            'suffix' => $row['suffix'], // include suffix if needed
                         );
                     }
                     $response['found'] = true;
                 }
             }
-            
+
             header('Content-Type: application/json');
             echo json_encode($response);
             exit();
@@ -287,7 +365,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // Get all residents with search and pagination
 $search = isset($_GET['search']) ? mysqli_real_escape_string($connection, $_GET['search']) : '';
-$status_filter = isset($_GET['status']) ? mysqli_real_escape_string($connection, $_GET['status']) : '';
 $zone_filter = isset($_GET['zone']) ? mysqli_real_escape_string($connection, $_GET['zone']) : '';
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
 $records_per_page = 10;
@@ -297,9 +374,6 @@ $offset = ($page - 1) * $records_per_page;
 $where_conditions = [];
 if (!empty($search)) {
     $where_conditions[] = "(full_name LIKE '%$search%' OR contact_number LIKE '%$search%')";
-}
-if (!empty($status_filter)) {
-    $where_conditions[] = "status = '$status_filter'";
 }
 if (!empty($zone_filter)) {
     $where_conditions[] = "zone = '$zone_filter'";
@@ -316,6 +390,9 @@ $total_pages = ceil($total_records / $records_per_page);
 // Get residents with pagination
 $residents_query = "SELECT * FROM residents $where_clause ORDER BY created_at DESC LIMIT $records_per_page OFFSET $offset";
 $residents_result = mysqli_query($connection, $residents_query);
+
+// Add: initialize row counter so numbering respects pagination
+$row_number = $offset + 1;
 
 // Get dashboard statistics for sidebar badges
 $complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE status = 'pending'";
@@ -831,6 +908,10 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 
         .btn-success:hover {
             background: #229f56;
+        }
+
+        .btn-success:hover {
+            background: #229f56;
             transform: translateY(-1px);
         }
 
@@ -1341,6 +1422,10 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     <i class="fas fa-users"></i>
                     Resident Profiling
                 </a>
+                <a href="resident_family.php" class="nav-item">
+                    <i class="fas fa-user-friends"></i>
+                    Resident Family
+                </a>
                 <a href="resident_account.php" class="nav-item">
 					<i class="fas fa-user-shield"></i>
 					Resident Accounts
@@ -1373,18 +1458,6 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     Disaster Management
                 </a>
             </div>
-            <!-- Finance -->
-			<div class="nav-section">
-				<div class="nav-section-title">Finance</div>
-				<a href="budgets.php" class="nav-item">
-					<i class="fas fa-wallet"></i>
-					Budgets
-				</a>
-				<a href="expenses.php" class="nav-item">
-					<i class="fas fa-file-invoice-dollar"></i>
-					Expenses
-				</a>
-			</div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
@@ -1462,23 +1535,23 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                         Residents List
                     </div>
                     <div class="search-filters">
-                        <form method="GET" style="display: flex; gap: 1rem; align-items: center;">
+                        <!-- right-aligned search form: search + zone + button -->
+                        <form method="GET" style="margin-left: auto; display:flex; gap:1rem; align-items:center;">
                             <input type="text" name="search" placeholder="Search residents..." 
                                    class="search-input" value="<?php echo htmlspecialchars($search); ?>">
-                            <select name="status" class="filter-select">
-                                <option value="">All Status</option>
-                                <option value="active" <?php echo $status_filter === 'active' ? 'selected' : ''; ?>>Active</option>
-                                <option value="inactive" <?php echo $status_filter === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
-                                <option value="pending" <?php echo $status_filter === 'pending' ? 'selected' : ''; ?>>Pending</option>
-                            </select>
                             <select name="zone" class="filter-select">
                                 <option value="">All Zones</option>
-                                <option value="Zone 1" <?php echo $zone_filter === 'Zone 1' ? 'selected' : ''; ?>>Zone 1</option>
-                                <option value="Zone 2" <?php echo $zone_filter === 'Zone 2' ? 'selected' : ''; ?>>Zone 2</option>
-                                <option value="Zone 3" <?php echo $zone_filter === 'Zone 3' ? 'selected' : ''; ?>>Zone 3</option>
-                                <option value="Zone 4" <?php echo $zone_filter === 'Zone 4' ? 'selected' : ''; ?>>Zone 4</option>
-                                <option value="Zone 5" <?php echo $zone_filter === 'Zone 5' ? 'selected' : ''; ?>>Zone 5</option>
-                                <option value="Zone 6" <?php echo $zone_filter === 'Zone 6' ? 'selected' : ''; ?>>Zone 6</option>
+                                <?php
+                                $zones = [];
+                                for ($i = 1; $i <= 7; $i++) {
+                                    $zones[] = "Zone {$i}A";
+                                    $zones[] = "Zone {$i}B";
+                                }
+                                foreach ($zones as $z) {
+                                    $sel = ($zone_filter === $z) ? 'selected' : '';
+                                    echo "<option value=\"{$z}\" {$sel}>{$z}</option>";
+                                }
+                                ?>
                             </select>
                             <button type="submit" class="btn btn-primary btn-sm">
                                 <i class="fas fa-search"></i> Search
@@ -1490,12 +1563,10 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     <table class="table">
                         <thead>
                             <tr>
-                                
-                                <th>ID</th>
+                                <th>#</th>
                                 <th>Full Name</th>
                                 <th>Age</th>
                                 <th>Contact Number</th>
-                                <th>Status</th>
                                 <th>Zone</th>
                                 <th>Face Data</th>
                                 <th>Date Added</th>
@@ -1506,18 +1577,12 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                             <?php if (mysqli_num_rows($residents_result) > 0): ?>
                                 <?php while ($resident = mysqli_fetch_assoc($residents_result)): ?>
                                     <tr>
-                                        
-                                        <td><?php echo $resident['id']; ?></td>
+                                        <td><?php echo $row_number++; ?></td>
                                         <td>
                                             <strong><?php echo htmlspecialchars($resident['full_name']); ?></strong>
                                         </td>
                                         <td><?php echo $resident['age']; ?></td>
                                         <td><?php echo htmlspecialchars($resident['contact_number']); ?></td>
-                                        <td>
-                                            <span class="status-badge status-<?php echo $resident['status']; ?>">
-                                                <?php echo ucfirst($resident['status']); ?>
-                                            </span>
-                                        </td>
                                         <td>
                                             <span class="status-badge zone-badge">
                                                 <?php echo htmlspecialchars($resident['zone']); ?>
@@ -1539,18 +1604,16 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                                             <button class="btn btn-warning btn-sm" onclick="editResident(<?php echo htmlspecialchars(json_encode($resident)); ?>)">
                                                 <i class="fas fa-edit"></i>
                                             </button>
-                                            <button class="btn btn-danger btn-sm" onclick="deleteResident(<?php echo $resident['id']; ?>, '<?php echo htmlspecialchars($resident['full_name']); ?>')">
-                                                <i class="fas fa-trash"></i>
-                                            </button>
+                                            <?php // Delete button removed as requested ?>
                                         </td>
                                     </tr>
                                 <?php endwhile; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="9" style="text-align: center; padding: 2rem; color: #666;">
+                                    <td colspan="8" style="text-align: center; padding: 2rem; color: #666;">
                                         <i class="fas fa-users" style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.3;"></i>
                                         <br>
-                                        <?php if (!empty($search) || !empty($status_filter)): ?>
+                                        <?php if (!empty($search) || !empty($zone_filter)): ?>
                                             No residents found matching your criteria.
                                         <?php else: ?>
                                             No residents added yet.
@@ -1566,7 +1629,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                 <?php if ($total_pages > 1): ?>
                     <div class="pagination">
                         <?php if ($page > 1): ?>
-                            <a href="?page=<?php echo ($page - 1); ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>">
+                            <a href="?page=<?php echo ($page - 1); ?>&search=<?php echo urlencode($search); ?>&zone=<?php echo urlencode($zone_filter); ?>">
                                 <i class="fas fa-chevron-left"></i> Previous
                             </a>
                         <?php endif; ?>
@@ -1575,14 +1638,14 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                             <?php if ($i == $page): ?>
                                 <span class="current"><?php echo $i; ?></span>
                             <?php else: ?>
-                                <a href="?page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>">
+                                <a href="?page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>&zone=<?php echo urlencode($zone_filter); ?>">
                                     <?php echo $i; ?>
                                 </a>
                             <?php endif; ?>
                         <?php endfor; ?>
                         
                         <?php if ($page < $total_pages): ?>
-                            <a href="?page=<?php echo ($page + 1); ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>">
+                            <a href="?page=<?php echo ($page + 1); ?>&search=<?php echo urlencode($search); ?>&zone=<?php echo urlencode($zone_filter); ?>">
                                 Next <i class="fas fa-chevron-right"></i>
                             </a>
                         <?php endif; ?>
@@ -1606,6 +1669,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     <input type="hidden" name="action" value="add_resident">
                     <input type="hidden" name="photo_data" id="photo_data">
                     <input type="hidden" name="face_descriptor" id="face_descriptor">
+                    <input type="hidden" name="existing_resident_id" id="existing_resident_id" value=""> <!-- NEW -->
                     
                     <!-- Photo Capture Section -->
                     <div class="photo-capture-container">
@@ -1642,9 +1706,6 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                                 <button type="button" class="btn btn-warning" onclick="retakePhoto()">
                                     <i class="fas fa-redo"></i> Retake Photo
                                 </button>
-                                <button type="button" class="btn btn-success" onclick="confirmPhoto()">
-                                    <i class="fas fa-check"></i> Use This Photo
-                                </button>
                             </div>
                         </div>
                         <div id="camera-start">
@@ -1674,26 +1735,23 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                         </div>
                         <div class="form-group">
                             <label for="contact_number">Contact Number *</label>
-                            <input type="text" id="contact_number" name="contact_number" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="status">Status *</label>
-                            <select id="status" name="status" class="form-control" required>
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                                <option value="pending">Pending</option>
-                            </select>
+                            <input type="text" id="contact_number" name="contact_number" class="form-control" required maxlength="11" inputmode="numeric" pattern="\d{11}" placeholder="09XXXXXXXXX">
                         </div>
                         <div class="form-group">
                             <label for="zone">Zone *</label>
                             <select id="zone" name="zone" class="form-control" required>
-                                <option value="Zone 1">Zone 1</option>
-                                <option value="Zone 2">Zone 2</option>
-                                <option value="Zone 3">Zone 3</option>
-                                <option value="Zone 4">Zone 4</option>
-                                <option value="Zone 5">Zone 5</option>
-                                <option value="Zone 6">Zone 6</option>
+                                <?php
+                                // default selection for create modal will be Zone 1A unless JS overrides
+                                for ($i = 1; $i <= 7; $i++) {
+                                    echo "<option value=\"Zone {$i}A\">Zone {$i}A</option>";
+                                    echo "<option value=\"Zone {$i}B\">Zone {$i}B</option>";
+                                }
+                                ?>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="suffix">Suffix (optional)</label>
+                            <input type="text" id="suffix" name="suffix" class="form-control" placeholder="Jr., Sr., II, III">
                         </div>
                     </div>
                     <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
@@ -1768,9 +1826,6 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                                 <button type="button" class="btn btn-warning" onclick="retakeEditPhoto()">
                                     <i class="fas fa-redo"></i> Retake Photo
                                 </button>
-                                <button type="button" class="btn btn-success" onclick="confirmEditPhoto()">
-                                    <i class="fas fa-check"></i> Use This Photo
-                                </button>
                             </div>
                         </div>
                         <div id="edit-camera-start">
@@ -1800,26 +1855,22 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                         </div>
                         <div class="form-group">
                             <label for="edit_contact_number">Contact Number *</label>
-                            <input type="text" id="edit_contact_number" name="contact_number" class="form-control" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="edit_status">Status *</label>
-                            <select id="edit_status" name="status" class="form-control" required>
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                                <option value="pending">Pending</option>
-                            </select>
+                            <input type="text" id="edit_contact_number" name="contact_number" class="form-control" required maxlength="11" inputmode="numeric" pattern="\d{11}" placeholder="09XXXXXXXXX">
                         </div>
                         <div class="form-group">
                             <label for="edit_zone">Zone *</label>
                             <select id="edit_zone" name="zone" class="form-control" required>
-                                <option value="Zone 1">Zone 1</option>
-                                <option value="Zone 2">Zone 2</option>
-                                <option value="Zone 3">Zone 3</option>
-                                <option value="Zone 4">Zone 4</option>
-                                <option value="Zone 5">Zone 5</option>
-                                <option value="Zone 6">Zone 6</option>
+                                <?php
+                                for ($i = 1; $i <= 7; $i++) {
+                                    echo "<option value=\"Zone {$i}A\">Zone {$i}A</option>";
+                                    echo "<option value=\"Zone {$i}B\">Zone {$i}B</option>";
+                                }
+                                ?>
                             </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit_suffix">Suffix (optional)</label>
+                            <input type="text" id="edit_suffix" name="suffix" class="form-control" placeholder="Jr., Sr., II, III">
                         </div>
                     </div>
                     <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem;">
@@ -1943,6 +1994,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             const ALT_MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights/';
 
             async function tryLoad(url) {
+                                                            
                 console.log('Attempting to load models from', url);
                 // load minimal set first (tiny detector + recognition + landmarks + expressions)
                 await Promise.all([
@@ -1950,7 +2002,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     faceapi.nets.faceLandmark68Net.loadFromUri(url),
                     faceapi.nets.faceRecognitionNet.loadFromUri(url),
                     faceapi.nets.faceExpressionNet.loadFromUri(url)
-                ]);
+                                              ]);
                 // ssdMobilenet is optional / fallback for detection accuracy
                 try {
                     await faceapi.nets.ssdMobilenetv1.loadFromUri(url);
@@ -1969,6 +2021,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                 loadingOverlay.classList.remove('show');
                 console.log('Models loaded from local folder:', LOCAL_MODEL_URL);
                 return;
+
             } catch (localErr) {
                 console.warn('Local models not found or failed to load:', localErr);
             }
@@ -2240,6 +2293,19 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             document.getElementById('photo_data').value = imageData;
             document.getElementById('face_descriptor').value = JSON.stringify(Array.from(currentFaceDescriptor));
             
+            // New: check if face already exists in DB and pre-fill form / set existing_resident_id
+            try {
+                const matched = await checkExistingFace(currentFaceDescriptor);
+                if (matched) {
+                    // If a match was found, checkExistingFace already stopped camera and closed the modal.
+                    // Abort further UI changes here.
+                    isCapturing = false;
+                    return;
+                }
+            } catch (err) {
+                console.warn('checkExistingFace failed', err);
+            }
+
             document.getElementById('camera-container').style.display = 'none';
             document.getElementById('photo-preview').style.display = 'block';
             
@@ -2251,34 +2317,82 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             isCapturing = false;
         }
 
-        async function autoCaptureEditPhoto() {
-            if (!editFaceDescriptor) {
-                isCapturing = false;
-                return;
+        // Check existing face and optionally prefill the form / set existing_resident_id
+        async function checkExistingFace(descriptorFloat32) {
+            if (!descriptorFloat32) return false;
+
+            const descriptorArray = Array.from(descriptorFloat32);
+            const formData = new FormData();
+            formData.append('action', 'search_face');
+            formData.append('search_descriptor', JSON.stringify(descriptorArray));
+
+            const resp = await fetch('', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await resp.json();
+            if (!data.found || !data.residents || data.residents.length === 0) {
+                // No residents with face descriptors in DB
+                return false;
             }
-            
-            const video = document.getElementById('editVideoElement');
-            const canvas = document.getElementById('editPhotoCanvas');
-            const context = canvas.getContext('2d');
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0);
-            
-            const imageData = canvas.toDataURL('image/jpeg');
-            document.getElementById('editCapturedImage').src = imageData;
-            document.getElementById('edit_photo_data').value = imageData;
-            document.getElementById('edit_face_descriptor').value = JSON.stringify(Array.from(editFaceDescriptor));
-            
-            document.getElementById('edit-camera-container').style.display = 'none';
-            document.getElementById('edit-photo-preview').style.display = 'block';
-            
-            if (faceDetectionInterval) {
-                clearInterval(faceDetectionInterval);
-                faceDetectionInterval = null;
+
+            // Compare descriptor to all returned residents (client-side) and find closest match
+            let best = null;
+            for (const resident of data.residents) {
+                if (resident.face_descriptor) {
+                    try {
+                        const stored = new Float32Array(JSON.parse(resident.face_descriptor));
+                        const distance = faceapi.euclideanDistance(descriptorFloat32, stored);
+                        
+                        if (best === null || distance < best.distance) {
+                            best = { resident, distance };
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse stored descriptor for resident', resident.id, e);
+                    }
+                }
             }
-            
-            isCapturing = false;
+
+            // Threshold: 0.6 (tune if needed)
+            if (best && best.distance < 0.6) {
+                const r = best.resident;
+
+                // Immediately stop camera and close create modal to avoid duplication
+                try {
+                    if (typeof stopCamera === 'function') stopCamera();
+                } catch (e) {
+                    console.warn('stopCamera not available', e);
+                }
+                try {
+                    closeModal('createModal');
+                } catch (e) {
+                    console.warn('closeModal failed', e);
+                }
+
+                // Non-blocking notification
+                Swal.fire({
+                    toast: true,
+                    position: 'top-end',
+                    icon: 'info',
+                    title: `Existing resident detected: ${r.full_name || (r.first_name + ' ' + r.last_name)}`,
+                    showConfirmButton: false,
+                    timer: 3000
+                });
+
+                return true;
+            } else {
+                // No close match: ensure status field visible/enabled
+                const statusEl = document.getElementById('status');
+                if (statusEl) {
+                    const statusGroup = statusEl.closest('.form-group');
+                    if (statusGroup) statusGroup.style.display = '';
+                    statusEl.disabled = false;
+                }
+                document.getElementById('existing_resident_id').value = '';
+                document.getElementById('suffix').value = '';
+                return false;
+            }
         }
 
         // Camera functions for Create Modal
@@ -2381,11 +2495,6 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             }, 200);
         }
 
-        function confirmPhoto() {
-            stopCamera();
-            alert('Photo captured successfully with face recognition data!');
-        }
-
         // Camera functions for Edit Modal
         async function startEditCamera() {
             if (!modelsLoaded) {
@@ -2472,7 +2581,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             document.getElementById('edit-camera-start').style.display = 'block';
             document.getElementById('edit-camera-container').style.display = 'none';
             document.getElementById('edit-photo-preview').style.display = 'none';
-            document.getElementById('edit-current-photo').style.display = 'block';
+            document.getElementById('edit-current_photo').style.display = 'block';
             document.getElementById('edit-face-status').style.display = 'none';
             document.getElementById('editCountdownOverlay').style.display = 'none';
             
@@ -2511,11 +2620,6 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     }
                 }
             }, 200);
-        }
-
-        function confirmEditPhoto() {
-            stopEditCamera();
-            alert('Photo updated successfully with face data!');
         }
 
         // Face Search Functions
@@ -2699,8 +2803,8 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             document.getElementById('edit_last_name').value = resident.last_name;
             document.getElementById('edit_age').value = resident.age;
             document.getElementById('edit_contact_number').value = resident.contact_number;
-            document.getElementById('edit_status').value = resident.status;
             document.getElementById('edit_zone').value = resident.zone;
+            document.getElementById('edit_suffix').value = resident.suffix || '';
             
             // Handle photo display
             if (resident.photo_path) {
@@ -2865,6 +2969,141 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                 console.error('Test failed:', error);
             }
         };
+
+        document.addEventListener('DOMContentLoaded', function() {
+		// Existing DOMContentLoaded handlers...
+		// Attach input restrictions for name fields (create + edit)
+		const letterOnlyFields = [
+			'first_name','last_name','suffix',
+			'edit_first_name','edit_last_name','edit_suffix'
+		];
+		const singleLetterFields = ['middle_initial','edit_middle_initial'];
+
+		// Prevent typing digits (key press) and strip digits on input/paste
+		letterOnlyFields.forEach(id => {
+			const el = document.getElementById(id);
+			if (!el) return;
+			// Prevent numeric key input
+			el.addEventListener('keypress', function(e){
+				// allow control keys
+				if (e.ctrlKey || e.metaKey || e.altKey) return;
+				// block digits
+				if (/\d/.test(String.fromCharCode(e.which || e.keyCode))) {
+					e.preventDefault();
+				}
+			});
+			// Sanitize on input (handles paste)
+			el.addEventListener('input', function(){
+				const cursor = el.selectionStart;
+				el.value = el.value.replace(/[0-9]/g,'');
+				// restore cursor (best-effort)
+				try { el.selectionStart = el.selectionEnd = cursor; } catch(e){}
+			});
+			// Prevent paste of numbers
+			el.addEventListener('paste', function(e){
+				const paste = (e.clipboardData || window.clipboardData).getData('text');
+				if (/\d/.test(paste)) {
+					e.preventDefault();
+					// paste cleaned text
+					const cleaned = paste.replace(/[0-9]/g,'');
+					document.execCommand('insertText', false, cleaned);
+				}
+			});
+		});
+
+		// Middle initial: single letter only
+		singleLetterFields.forEach(id => {
+			const el = document.getElementById(id);
+			if (!el) return;
+			el.addEventListener('keypress', function(e){
+				if (e.ctrlKey || e.metaKey || e.altKey) return;
+				const ch = String.fromCharCode(e.which || e.keyCode);
+				if (!/^[A-Za-z]$/.test(ch)) {
+					e.preventDefault();
+				}
+				// prevent typing more than 1 character
+				if (el.value.length >= 1 && !el.selectionStart !== el.selectionEnd) {
+					e.preventDefault();
+				}
+			});
+			el.addEventListener('input', function(){
+				// keep only first letter and strip non-letters
+				el.value = el.value.replace(/[^A-Za-z]/g,'').slice(0,1);
+			});
+			el.addEventListener('paste', function(e){
+				const paste = (e.clipboardData || window.clipboardData).getData('text');
+				const cleaned = paste.replace(/[^A-Za-z]/g,'').slice(0,1);
+				e.preventDefault();
+				document.execCommand('insertText', false, cleaned);
+			});
+		});
+
+		// NEW: Digit-only enforcement for age fields (create + edit)
+		const digitOnlyFields = ['age','edit_age','contact_number','edit_contact_number'];
+		digitOnlyFields.forEach(id => {
+			const el = document.getElementById(id);
+			if (!el) return;
+
+			// Use keydown to allow navigation/control keys and block non-digits
+			el.addEventListener('keydown', function(e) {
+				// Allow: control combos, navigation, backspace, delete, tab
+				if (e.ctrlKey || e.metaKey || e.altKey) return;
+				const allowedKeys = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab'];
+				if (allowedKeys.includes(e.key)) return;
+				// If key is not a single digit, prevent it
+				if (!/^\d$/.test(e.key)) {
+					e.preventDefault();
+				}
+			});
+
+			// Sanitize input (handles paste and non-keyboard input)
+			el.addEventListener('input', function() {
+				const cursor = el.selectionStart;
+				// remove any non-digit characters
+				const cleaned = el.value.replace(/\D/g,'');
+				if (el.value !== cleaned) {
+					el.value = cleaned;
+					try { el.selectionStart = el.selectionEnd = cursor - 1; } catch(e){}
+				}
+			});
+
+			// Clean pasted content
+			el.addEventListener('paste', function(e) {
+				const paste = (e.clipboardData || window.clipboardData).getData('text');
+				if (/\D/.test(paste)) {
+					e.preventDefault();
+					const cleaned = paste.replace(/\D/g,'');
+					document.execCommand('insertText', false, cleaned);
+				}
+			});
+		});
+
+		// Add contact format check on submit (create)
+		const createForm = document.getElementById('createForm');
+		if (createForm) {
+			createForm.addEventListener('submit', function(e) {
+				const contact = document.getElementById('contact_number').value.trim();
+				if (!/^09\d{9}$/.test(contact)) {
+					e.preventDefault();
+					alert('Contact number must be 11 digits and start with 09.');
+					return false;
+				}
+			});
+		}
+
+		// Add contact format check on submit (edit)
+		const editForm = document.getElementById('editForm');
+		if (editForm) {
+			editForm.addEventListener('submit', function(e) {
+				const contact = document.getElementById('edit_contact_number').value.trim();
+				if (!/^09\d{9}$/.test(contact)) {
+					e.preventDefault();
+					alert('Contact number must be 11 digits and start with 09.');
+					return false;
+				}
+			});
+		}
+	});
     </script>
 </body>
 </html>

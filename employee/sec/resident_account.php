@@ -1331,6 +1331,10 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 					<i class="fas fa-users"></i>
 					Resident Profiling
 				</a>
+				<a href="resident_family.php" class="nav-item">
+                    <i class="fas fa-user-friends"></i>
+                    Resident Family
+                </a>
 				<a href="resident_account.php" class="nav-item active">
 					<i class="fas fa-user-shield"></i>
 					Resident Accounts
@@ -2183,40 +2187,21 @@ function submitVerificationCode() {
 
 // add logout confirmation using SweetAlert2
 function handleLogout() {
-	// Use SweetAlert2 to confirm logout
-	Swal.fire({
-		title: 'Are you sure you want to logout?',
-		text: "You will be logged out of the admin panel.",
-		icon: 'warning',
-		showCancelButton: true,
-		confirmButtonColor: '#d33',
-		cancelButtonColor: '#6c757d',
-		confirmButtonText: 'Yes, logout',
-		cancelButtonText: 'Cancel',
-		reverseButtons: true
-	}).then((result) => {
-		if (result.isConfirmed) {
-			// Optionally show a small loading toast while submitting
 			Swal.fire({
-				title: 'Logging out...',
-				allowOutsideClick: false,
-				allowEscapeKey: false,
-				showConfirmButton: false,
-				didOpen: () => {
-					Swal.showLoading();
-					// submit the existing logout form
-					const form = document.getElementById('logoutForm');
-					if (form) {
-						form.submit();
-					} else {
-						// fallback: navigate to logout URL
-						window.location.href = '../../employee/logout.php';
-					}
+				title: 'Logout Confirmation',
+				text: "Are you sure you want to logout?",
+				icon: 'question',
+				showCancelButton: true,
+				confirmButtonColor: '#3085d6',
+				cancelButtonColor: '#d33',
+				confirmButtonText: 'Yes, logout',
+				cancelButtonText: 'Cancel'
+			}).then((result) => {
+				if (result.isConfirmed) {
+					document.getElementById('logoutForm').submit();
 				}
 			});
 		}
-	});
-}
 	</script>
 </body>
 </html>

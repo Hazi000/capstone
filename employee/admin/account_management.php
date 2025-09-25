@@ -944,6 +944,10 @@ function normalize_role($raw) {
 					<i class="fas fa-users"></i>
 					Resident Profiling
 				</a>
+				 <a href="resident_family.php" class="nav-item">
+                    <i class="fas fa-user-friends"></i>
+                    Resident Family
+                </a>
 				<a href="resident_account.php" class="nav-item">
 					<i class="fas fa-user-shield"></i>
 					Resident Accounts
