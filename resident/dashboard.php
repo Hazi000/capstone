@@ -13,24 +13,6 @@ $resident_id = $_SESSION['resident_id'];
 // Get dashboard statistics for resident
 $stats = [];
 
-// Count total complaints by resident
-$complaint_query = "SELECT COUNT(*) as total FROM complaints WHERE resident_id = ?";
-$stmt = mysqli_prepare($connection, $complaint_query);
-mysqli_stmt_bind_param($stmt, "i", $resident_id);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$stats['my_complaints'] = mysqli_fetch_assoc($result)['total'];
-mysqli_stmt_close($stmt);
-
-// Count pending complaints by resident
-$pending_complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE resident_id = ? AND status = 'pending'";
-$stmt = mysqli_prepare($connection, $pending_complaint_query);
-mysqli_stmt_bind_param($stmt, "i", $resident_id);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
-mysqli_stmt_close($stmt);
-
 // Count total certificate requests by resident
 $certificate_query = "SELECT COUNT(*) as total FROM certificate_requests WHERE resident_id = ?";
 $stmt = mysqli_prepare($connection, $certificate_query);
@@ -49,21 +31,13 @@ $result = mysqli_stmt_get_result($stmt);
 $stats['pending_certificates'] = mysqli_fetch_assoc($result)['pending'];
 mysqli_stmt_close($stmt);
 
-// Get recent complaints by resident
-$recent_complaints_query = "SELECT * FROM complaints WHERE resident_id = ? ORDER BY created_at DESC LIMIT 5";
-$stmt = mysqli_prepare($connection, $recent_complaints_query);
-mysqli_stmt_bind_param($stmt, "i", $resident_id);
-mysqli_stmt_execute($stmt);
-$recent_complaints = mysqli_stmt_get_result($stmt);
-mysqli_stmt_close($stmt);
-
 // Get recent announcements
 $recent_announcements_query = "SELECT a.*, u.full_name as created_by_name 
                               FROM announcements a 
                               LEFT JOIN users u ON a.created_by = u.id 
                               WHERE a.status = 'active' 
                               AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())
-                              ORDER BY a.priority DESC, a.created_at DESC 
+                              ORDER BY a.created_at DESC 
                               LIMIT 5";
 $recent_announcements = mysqli_query($connection, $recent_announcements_query);
 
@@ -75,23 +49,22 @@ mysqli_stmt_execute($stmt);
 $recent_certificates = mysqli_stmt_get_result($stmt);
 mysqli_stmt_close($stmt);
 
-// Get upcoming events (announcements with event dates)
+// Get upcoming events (use events table instead of announcements)
 $upcoming_events_query = "SELECT 
-    'announcement' as type,
-    a.id,
-    COALESCE(a.event_date, a.created_at) as event_date,
-    a.event_time as time,
-    a.title,
-    a.status,
-    u.full_name as created_by_name,
-    a.priority
-FROM announcements a 
-LEFT JOIN users u ON a.created_by = u.id 
-WHERE a.event_date IS NOT NULL 
-AND a.event_date >= CURDATE() 
-AND a.event_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-AND a.status = 'active'
-ORDER BY a.event_date ASC, a.event_time ASC
+    'event' as type,
+    e.id,
+    e.event_start_date as event_date,
+    e.event_time as time,
+    e.title,
+    e.status,
+    u.full_name as created_by_name
+FROM events e
+LEFT JOIN users u ON e.created_by = u.id
+WHERE e.event_start_date IS NOT NULL
+  AND e.event_start_date >= CURDATE()
+  AND e.event_start_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+  AND e.status IN ('upcoming','ongoing')
+ORDER BY e.event_start_date ASC, e.event_time ASC
 LIMIT 10";
 
 $upcoming_events = mysqli_query($connection, $upcoming_events_query);
@@ -787,16 +760,6 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
             <!-- Statistics Overview -->
             <div class="stats-grid">
                 <div class="stat-card">
-                    <div class="stat-icon" style="color: #e74c3c;">
-                        <i class="fas fa-exclamation-circle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $stats['pending_complaints']; ?></h3>
-                        <p>Pending Complaints</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
                     <div class="stat-icon" style="color: #f39c12;">
                         <i class="fas fa-file-alt"></i>
                     </div>
@@ -811,16 +774,6 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
                         <i class="fas fa-check-circle"></i>
                     </div>
                     <div class="stat-content">
-                        <h3><?php echo $stats['my_complaints']; ?></h3>
-                        <p>Total Complaints</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #3498db;">
-                        <i class="fas fa-certificate"></i>
-                    </div>
-                    <div class="stat-content">
                         <h3><?php echo $stats['my_certificates']; ?></h3>
                         <p>Total Certificates</p>
                     </div>
@@ -832,35 +785,6 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
                 <div class="left-section">
                     <!-- Recent Activities -->
                     <div class="recent-activities">
-                        <div class="recent-card">
-                            <div class="recent-header">
-                                <h3 class="recent-title">
-                                    <i class="fas fa-exclamation-triangle" style="color: #e74c3c; margin-right: 0.5rem;"></i>
-                                    My Recent Complaints
-                                </h3>
-                            </div>
-                            <div class="recent-list">
-                                <?php if (mysqli_num_rows($recent_complaints) > 0): ?>
-                                    <?php while ($complaint = mysqli_fetch_assoc($recent_complaints)): ?>
-                                        <div class="recent-item">
-                                            <div class="recent-info">
-                                                <h4><?php echo htmlspecialchars($complaint['subject']); ?></h4>
-                                                <p><?php echo date('M j, Y', strtotime($complaint['created_at'])); ?></p>
-                                            </div>
-                                            <span class="status-badge status-<?php echo $complaint['status']; ?>">
-                                                <?php echo ucfirst($complaint['status']); ?>
-                                            </span>
-                                        </div>
-                                    <?php endwhile; ?>
-                                <?php else: ?>
-                                    <div class="empty-state">
-                                        <i class="fas fa-inbox"></i>
-                                        <p>No complaints filed yet</p>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-
                         <div class="recent-card">
                             <div class="recent-header">
                                 <h3 class="recent-title">
@@ -914,9 +838,6 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
                                         </p>
                                         <div class="announcement-meta">
                                             <span><?php echo date('M j, Y', strtotime($announcement['created_at'])); ?></span>
-                                            <span class="priority-badge priority-<?php echo $announcement['priority']; ?>">
-                                                <?php echo ucfirst($announcement['priority']); ?>
-                                            </span>
                                         </div>
                                     </div>
                                 <?php endwhile; ?>
