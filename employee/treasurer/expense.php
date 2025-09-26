@@ -186,7 +186,7 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Budget Management - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Add Select2 CSS and JS -->
+    <!-- Add Select2 CSS + jQuery + Select2 JS (required so budget item search works) -->
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
@@ -1218,107 +1218,139 @@ while ($row = mysqli_fetch_assoc($budgets_result)) {
             });
         }
 
-        // Modal event listeners
+        // Single place for modal + select2 + validation logic
         document.addEventListener('DOMContentLoaded', function() {
-            const modal = document.getElementById('budgetModal');
-            const modalContent = modal.querySelector('.modal-content');
+            // Initialize Select2 on budget selector(s)
+            if (typeof $ !== 'undefined' && $.fn && $.fn.select2) {
+                $('.select2-search').select2({
+                    dropdownParent: $('#budgetModal'),
+                    placeholder: "Search budget item...",
+                    allowClear: true,
+                    width: '100%'
+                });
+            }
 
-            modal.addEventListener('click', function(e) {
-                if (e.target === this) closeModal();
-            });
+            // Modal helpers
+            function openModal() {
+                const modal = document.getElementById('budgetModal');
+                modal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
 
-            modalContent.addEventListener('click', function(e) {
-                e.stopPropagation();
-            });
+            function closeModal() {
+                const modal = document.getElementById('budgetModal');
+                modal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
 
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && modal.classList.contains('active')) {
-                    closeModal();
-                }
-            });
-        });
-
-        // Initialize Select2 and handle modal
-        document.addEventListener('DOMContentLoaded', function() {
-            // Initialize Select2
-            $('.select2-search').select2({
-                dropdownParent: $('#budgetModal'),
-                placeholder: "Search budget item...",
-                allowClear: true,
-                width: '100%'
-            });
-
-            // Reset Select2 when modal is opened
-            const showAddModal = window.showAddModal;
+            // Expose showAddModal for buttons
             window.showAddModal = function() {
-                showAddModal();
-                $('.select2-search').val('').trigger('change');
+                // Reset form and UI
+                const form = document.getElementById('budgetForm');
+                if (form) form.reset();
+
+                // Reset select2 selection
+                if (typeof $ !== 'undefined' && $.fn && $.fn.select2) {
+                    $('.select2-search').val(null).trigger('change');
+                }
+
+                // Reset available display & indicator
+                const avail = document.querySelector('.available-budget');
+                if (avail) avail.style.display = 'none';
+                const indicator = document.getElementById('amountIndicator');
+                if (indicator) indicator.style.display = 'none';
+
+                openModal();
             };
 
-            // Modal event listeners
-            const modal = document.getElementById('budgetModal');
-            const modalContent = modal.querySelector('.modal-content');
-
-            modal.addEventListener('click', function(e) {
-                if (e.target === this) closeModal();
+            // Wire close button
+            document.querySelectorAll('.modal-close').forEach(btn => {
+                btn.addEventListener('click', closeModal);
             });
 
-            modalContent.addEventListener('click', function(e) {
-                e.stopPropagation();
-            });
-
-            document.addEventListener('keydown', function(e) {
-                if (e.key === 'Escape' && modal.classList.contains('active')) {
-                    closeModal();
-                }
-            });
-        });
-
-        // Add this function to check budget before form submission
-        function validateBudgetAmount() {
-            const amountInput = document.getElementById('amount');
-            const amountIndicator = document.getElementById('amountIndicator');
-            const budgetSelect = document.getElementById('budget_id');
-            const selectedOption = budgetSelect.options[budgetSelect.selectedIndex];
-            
-            if (!selectedOption || !selectedOption.dataset.available) {
-                Swal.fire({
-                    title: 'Error',
-                    text: 'Please select a budget item first',
-                    icon: 'error',
-                    confirmButtonColor: '#3085d6'
+            // Close when clicking outside modal-content
+            const budgetModal = document.getElementById('budgetModal');
+            if (budgetModal) {
+                budgetModal.addEventListener('click', function(e) {
+                    if (e.target === this) closeModal();
                 });
-                return false;
             }
 
-            const amount = parseFloat(amountInput.value);
-            const availableBudget = parseFloat(selectedOption.dataset.available);
+            // Budget selection -> show available amount
+            const budgetSelect = document.getElementById('budget_id');
+            const availableBudgetDisplay = document.querySelector('.available-budget');
+            const availableAmountEl = document.getElementById('availableAmount');
 
-            if (amount > availableBudget) {
-                amountInput.classList.add('error');
-                amountIndicator.classList.add('amount-exceeded');
-                amountIndicator.style.display = 'block';
-                return false;
-            } else {
+            function updateAvailableDisplay() {
+                if (!budgetSelect) return;
+                const opt = budgetSelect.options[budgetSelect.selectedIndex];
+                if (opt && opt.dataset && opt.dataset.available) {
+                    if (availableBudgetDisplay) availableBudgetDisplay.style.display = 'block';
+                    if (availableAmountEl) availableAmountEl.textContent = parseFloat(opt.dataset.available).toFixed(2);
+                } else {
+                    if (availableBudgetDisplay) availableBudgetDisplay.style.display = 'none';
+                    if (availableAmountEl) availableAmountEl.textContent = '0.00';
+                }
+            }
+
+            if (budgetSelect) {
+                budgetSelect.addEventListener('change', updateAvailableDisplay);
+            }
+
+            // Validation logic used on submit and in real-time
+            function validateBudgetAmount() {
+                const amountInput = document.getElementById('amount');
+                const indicator = document.getElementById('amountIndicator');
+                const opt = budgetSelect ? budgetSelect.options[budgetSelect.selectedIndex] : null;
+
+                if (!opt || !opt.dataset || typeof opt.dataset.available === 'undefined' || opt.value === '') {
+                    Swal.fire({
+                        title: 'Error',
+                        text: 'Please select a budget item first.',
+                        icon: 'error',
+                        confirmButtonColor: '#3085d6'
+                    });
+                    return false;
+                }
+
+                const available = parseFloat(opt.dataset.available) || 0;
+                const amount = parseFloat(amountInput.value) || 0;
+
+                if (amount > available) {
+                    amountInput.classList.add('error');
+                    if (indicator) {
+                        indicator.classList.add('amount-exceeded');
+                        indicator.style.display = 'block';
+                    }
+                    return false;
+                }
+
                 amountInput.classList.remove('error');
-                amountIndicator.classList.remove('amount-exceeded');
-                amountIndicator.style.display = 'none';
+                if (indicator) {
+                    indicator.classList.remove('amount-exceeded');
+                    indicator.style.display = 'none';
+                }
                 return true;
             }
-        }
 
-        // Add event listener for amount input to check in real-time
-        document.getElementById('amount').addEventListener('input', function() {
-            validateBudgetAmount();
-        });
+            // Real-time check
+            const amountInputEl = document.getElementById('amount');
+            if (amountInputEl) amountInputEl.addEventListener('input', validateBudgetAmount);
 
-        // Update the form submission handler
-        document.getElementById('budgetForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            if (validateBudgetAmount()) {
-                this.submit();
+            // Form submission
+            const budgetForm = document.getElementById('budgetForm');
+            if (budgetForm) {
+                budgetForm.addEventListener('submit', function(e) {
+                    if (!validateBudgetAmount()) {
+                        e.preventDefault();
+                        return false;
+                    }
+                    // allow normal submission
+                });
             }
+
+            // Optionally pre-populate available if select has initial value
+            updateAvailableDisplay();
         });
 
         // Show SweetAlert2 notifications for PHP session messages

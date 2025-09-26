@@ -123,28 +123,42 @@ $recent_announcements_query = "SELECT a.*, u.full_name as created_by_name
                               LEFT JOIN users u ON a.created_by = u.id 
                               WHERE a.status = 'active' 
                               AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())
-                              ORDER BY a.priority DESC, a.created_at DESC 
+                              ORDER BY a.created_at DESC 
                               LIMIT 5";
 $recent_announcements = mysqli_query($connection, $recent_announcements_query);
 
-// Get calendar events (appointments and announcements)
+// Get calendar events (use only events table, not announcements)
 $calendar_events_query = "
-    SELECT 
-    'announcement' as type,
-    an.id,
-    COALESCE(an.event_date, an.created_at) as event_date, /* Use created_at if event_date is null */
-    an.event_time as time,
-    an.title,
-    an.status,
-    u.full_name as resident_name,
-    'announcement' as category
-FROM announcements an 
-LEFT JOIN users u ON an.created_by = u.id 
-WHERE (an.event_date IS NOT NULL AND an.event_date >= CURDATE() AND an.event_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-   OR (an.event_date IS NULL AND DATE(an.created_at) >= CURDATE() AND DATE(an.created_at) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-AND an.status = 'active'";
-
+    SELECT
+        'event' AS type,
+        e.id,
+        DATE(e.event_start_date) AS event_date,
+        e.event_time AS time,
+        e.title,
+        e.status,
+        u.full_name AS created_by_name
+    FROM events e
+    LEFT JOIN users u ON e.created_by = u.id
+    WHERE e.event_start_date IS NOT NULL
+      AND DATE(e.event_start_date) >= CURDATE()
+      AND DATE(e.event_start_date) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+      AND e.status IN ('upcoming','ongoing')
+    ORDER BY e.event_start_date ASC, e.event_time ASC";
 $calendar_events = mysqli_query($connection, $calendar_events_query);
+$events_data = [];
+if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
+    while ($row = mysqli_fetch_assoc($calendar_events)) {
+        $events_data[] = [
+            'id' => $row['id'],
+            'title' => $row['title'],
+            'event_date' => date('Y-m-d', strtotime($row['event_date'])),
+            'time' => $row['time'],
+            'type' => $row['type'],
+            'status' => $row['status'],
+            'created_by_name' => $row['created_by_name'] ?? ''
+        ];
+    }
+}
 
 // Build reusable arrays for recent items so we can render them and expose to JS
 $recent_complaints_data = [];

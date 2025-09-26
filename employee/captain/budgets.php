@@ -68,6 +68,36 @@ if ($pending_result && $row = mysqli_fetch_assoc($pending_result)) {
     $pending_complaints = $row['pending'];
 }
 
+// Add this PHP code after the initial PHP queries and before output (near existing edit/delete handlers)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['item']) && isset($_POST['amount']) && !isset($_POST['edit_budget']) && !isset($_POST['delete_budget'])) {
+    // Add new budget
+    $item = trim($_POST['item']);
+    $amount = floatval($_POST['amount']);
+    $budget_date = !empty($_POST['budget_date']) ? $_POST['budget_date'] : date('Y-m-d');
+
+    if ($item === '' || $amount <= 0) {
+        $error = "Please provide a valid item name and amount greater than zero.";
+    } else {
+        $item_safe = mysqli_real_escape_string($connection, $item);
+        // budgets table does not have created_by column — insert only item, amount, budget_date, created_at
+        $stmt = mysqli_prepare($connection, "INSERT INTO budgets (item, amount, budget_date, created_at) VALUES (?, ?, ?, NOW())");
+        if ($stmt) {
+            // bind item (string), amount (double), budget_date (string)
+            mysqli_stmt_bind_param($stmt, "sds", $item_safe, $amount, $budget_date);
+            if (mysqli_stmt_execute($stmt)) {
+                mysqli_stmt_close($stmt);
+                header("Location: budgets.php?added=1");
+                exit();
+            } else {
+                $error = "Failed to save budget: " . mysqli_error($connection);
+                mysqli_stmt_close($stmt);
+            }
+        } else {
+            $error = "Failed to prepare statement: " . mysqli_error($connection);
+        }
+    }
+}
+
 // Add this PHP code after the initial PHP queries
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_budget'])) {
     $budget_id = isset($_POST['budget_id']) ? intval($_POST['budget_id']) : 0;
