@@ -100,8 +100,8 @@ if ($stmt) {
     $my_requests = mysqli_stmt_get_result($stmt);
     mysqli_stmt_close($stmt);
 } else {
-    // Create empty result if table doesn't exist
-    $my_requests = new mysqli_result();
+    // return false when prepare fails instead of attempting to instantiate mysqli_result
+    $my_requests = false;
 }
 ?>
 
@@ -647,7 +647,7 @@ if ($stmt) {
                 </a>
                 <a href="announcements.php" class="nav-item">
                     <i class="fas fa-bullhorn"></i>
-                    Announcements
+                    Events
                 </a>
                
                 <a href="request-certificate.php" class="nav-item active">
@@ -735,7 +735,7 @@ if ($stmt) {
                         <div class="form-group">
                             <label>Select Certificate Type:</label>
                             <div class="certificate-types">
-                                <div class="cert-type-card" onclick="selectCertType('barangay_clearance')">
+                                <div class="cert-type-card" onclick="selectCertType(this, 'barangay_clearance')">
                                     <input type="radio" name="certificate_type" value="Barangay Clearance" id="barangay_clearance">
                                     <div class="cert-type-title">
                                         <i class="fas fa-shield-alt" style="color: #4a47a3;"></i>
@@ -746,7 +746,7 @@ if ($stmt) {
                                     </div>
                                 </div>
 
-                                <div class="cert-type-card" onclick="selectCertType('certificate_indigency')">
+                                <div class="cert-type-card" onclick="selectCertType(this, 'certificate_indigency')">
                                     <input type="radio" name="certificate_type" value="Certificate of Indigency" id="certificate_indigency">
                                     <div class="cert-type-title">
                                         <i class="fas fa-hand-holding-heart" style="color: #e74c3c;"></i>
@@ -757,7 +757,7 @@ if ($stmt) {
                                     </div>
                                 </div>
 
-                                <div class="cert-type-card" onclick="selectCertType('certificate_residency')">
+                                <div class="cert-type-card" onclick="selectCertType(this, 'certificate_residency')">
                                     <input type="radio" name="certificate_type" value="Certificate of Residency" id="certificate_residency">
                                     <div class="cert-type-title">
                                         <i class="fas fa-home" style="color: #27ae60;"></i>
@@ -768,7 +768,7 @@ if ($stmt) {
                                     </div>
                                 </div>
 
-                                <div class="cert-type-card" onclick="selectCertType('business_permit')">
+                                <div class="cert-type-card" onclick="selectCertType(this, 'business_permit')">
                                     <input type="radio" name="certificate_type" value="Barangay Business Permit" id="business_permit">
                                     <div class="cert-type-title">
                                         <i class="fas fa-store" style="color: #f39c12;"></i>
@@ -917,17 +917,20 @@ if ($stmt) {
             document.querySelector('.tab:first-child').click();
         }
 
-        function selectCertType(certType) {
+        function selectCertType(cardEl, certType) {
             // Remove selected class from all cards
             document.querySelectorAll('.cert-type-card').forEach(card => {
                 card.classList.remove('selected');
             });
             
-            // Add selected class to clicked card
-            event.currentTarget.classList.add('selected');
+            // Add selected class to clicked card (cardEl is the element passed via onclick="selectCertType(this, 'id')")
+            if (cardEl && cardEl.classList) {
+                cardEl.classList.add('selected');
+            }
             
             // Check the radio button
-            document.getElementById(certType).checked = true;
+            const input = document.getElementById(certType);
+            if (input) input.checked = true;
         }
 
         function toggleSidebar() {

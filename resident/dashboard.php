@@ -730,7 +730,7 @@ $upcoming_events = mysqli_query($connection, $upcoming_events_query);
                 </a>
                 <a href="announcements.php" class="nav-item">
                     <i class="fas fa-bullhorn"></i>
-                    Announcements
+                    Events
                 </a>
                 
                 <a href="request-certificate.php" class="nav-item">

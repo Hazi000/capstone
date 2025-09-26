@@ -48,26 +48,25 @@ $recent_announcements_query = "SELECT a.*, u.full_name as created_by_name
                               LEFT JOIN users u ON a.created_by = u.id 
                               WHERE a.status = 'active' 
                               AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())
-                              ORDER BY a.priority DESC, a.created_at DESC 
+                              ORDER BY a.created_at DESC 
                               LIMIT 5";
 $recent_announcements = mysqli_query($connection, $recent_announcements_query);
 
-// Get calendar events (appointments and announcements)
+// Update calendar events query
 $calendar_events_query = "
     SELECT 
-    'announcement' as type,
-    an.id,
-    COALESCE(an.event_date, an.created_at) as event_date, /* Use created_at if event_date is null */
-    an.event_time as time,
-    an.title,
-    an.status,
-    u.full_name as resident_name,
-    'announcement' as category
-FROM announcements an 
-LEFT JOIN users u ON an.created_by = u.id 
-WHERE (an.event_date IS NOT NULL AND an.event_date >= CURDATE() AND an.event_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-   OR (an.event_date IS NULL AND DATE(an.created_at) >= CURDATE() AND DATE(an.created_at) <= DATE_ADD(CURDATE(), INTERVAL 30 DAY))
-AND an.status = 'active'";
+        id,
+        title,
+        event_date,
+        event_time as time,
+        event_type as type,
+        status,
+        (SELECT full_name FROM users WHERE id = created_by) as resident_name
+    FROM calendar_events 
+    WHERE event_date >= CURDATE() 
+    AND event_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
+    AND status = 'active'
+    ORDER BY event_date ASC, event_time ASC";
 
 $calendar_events = mysqli_query($connection, $calendar_events_query);
 ?>
@@ -821,17 +820,17 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                 </a>
             </div>
             <!-- Finance -->
-			<div class="nav-section">
-				<div class="nav-section-title">Finance</div>
-				<a href="budgets.php" class="nav-item">
-					<i class="fas fa-wallet"></i>
-					Budgets
-				</a>
-				<a href="expenses.php" class="nav-item">
-					<i class="fas fa-file-invoice-dollar"></i>
-					Expenses
-				</a>
-			</div>
+            <div class="nav-section">
+                <div class="nav-section-title">Finance</div>
+                <a href="budgets.php" class="nav-item">
+                    <i class="fas fa-wallet"></i>
+                    Budgets
+                </a>
+                <a href="expenses.php" class="nav-item">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    Expenses
+                </a>
+            </div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
@@ -839,6 +838,7 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                     <i class="fas fa-cog"></i>
                     Settings
                 </a>
+                 
             </div>
         </div>
 
@@ -968,9 +968,6 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                                                 <h4><?php echo htmlspecialchars($announcement['title']); ?></h4>
                                                 <p>by <?php echo htmlspecialchars($announcement['created_by_name'] ?? 'Unknown'); ?> • <?php echo date('M j, Y', strtotime($announcement['created_at'])); ?></p>
                                             </div>
-                                            <span class="priority-badge priority-<?php echo $announcement['priority']; ?>">
-                                                <?php echo ucfirst($announcement['priority']); ?>
-                                            </span>
                                         </div>
                                     <?php endwhile; ?>
                                 <?php else: ?>

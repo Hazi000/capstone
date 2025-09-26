@@ -5,36 +5,52 @@ require_once '../config.php';
 // Handle volunteer signup from resident
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'volunteer_signup') {
     $resident_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null);
+    $event_id = isset($_POST['event_id']) ? intval($_POST['event_id']) : 0;
     
-    if (!$resident_id) {
-        echo "<script>alert('Please log in first.'); window.location.href='announcements.php';</script>";
-        exit();
-    }
-
-    $announcement_id = isset($_POST['announcement_id']) ? intval($_POST['announcement_id']) : 0;
-    
-    // Check for existing signup
-    $check_signup = mysqli_query($connection, "SELECT status FROM community_volunteers 
-        WHERE resident_id = $resident_id AND announcement_id = $announcement_id");
-    
-    if (mysqli_num_rows($check_signup) > 0) {
-        $status = mysqli_fetch_assoc($check_signup)['status'];
-        echo "<script>alert('You have already " . ($status == 'pending' ? 'requested to volunteer' : 'volunteered') . " for this event.'); 
-            window.location.href='announcements.php';</script>";
-        exit();
-    }
-
-    // Insert new volunteer signup
-    $insert_query = "INSERT INTO community_volunteers (resident_id, announcement_id, status, created_at) 
-                    VALUES ($resident_id, $announcement_id, 'pending', NOW())";
-    
-    if (mysqli_query($connection, $insert_query)) {
-        echo "<script>alert('Volunteer request submitted successfully!'); window.location.href='announcements.php';</script>";
-        exit();
+    // First check if there's an open volunteer request for this event
+    $request_query = "SELECT id FROM volunteer_requests WHERE event_id = ? AND status = 'open' LIMIT 1";
+    $stmt = mysqli_prepare($connection, $request_query);
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, "i", $event_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        
+        if ($row = mysqli_fetch_assoc($result)) {
+            $request_id = $row['id'];
+            
+            // Check for existing signup
+            $check_signup = mysqli_query($connection, "SELECT status FROM volunteer_registrations 
+                WHERE resident_id = $resident_id AND event_id = $event_id");
+            
+            if (mysqli_num_rows($check_signup) > 0) {
+                $status = mysqli_fetch_assoc($check_signup)['status'];
+                $_SESSION['error_message'] = "You have already " . ($status == 'pending' ? 'requested to volunteer' : 'volunteered') . " for this event.";
+            } else {
+                // Insert new volunteer signup with request_id
+                $insert_query = "INSERT INTO volunteer_registrations (event_id, request_id, resident_id, status, registration_date) 
+                               VALUES (?, ?, ?, 'pending', NOW())";
+                               
+                $insert_stmt = mysqli_prepare($connection, $insert_query);
+                if ($insert_stmt) {
+                    mysqli_stmt_bind_param($insert_stmt, "iii", $event_id, $request_id, $resident_id);
+                    if (mysqli_stmt_execute($insert_stmt)) {
+                        $_SESSION['success_message'] = "Volunteer request submitted successfully!";
+                    } else {
+                        $_SESSION['error_message'] = "Error submitting volunteer request. Please try again.";
+                    }
+                    mysqli_stmt_close($insert_stmt);
+                }
+            }
+        } else {
+            $_SESSION['error_message'] = "No open volunteer positions available for this event.";
+        }
+        mysqli_stmt_close($stmt);
     } else {
-        echo "<script>alert('Error submitting volunteer request. Please try again.'); window.location.href='announcements.php';</script>";
-        exit();
+        $_SESSION['error_message'] = "System error. Please try again later.";
     }
+    
+    header("Location: announcements.php");
+    exit();
 }
 
 // Modify events query to properly check volunteer status
@@ -45,37 +61,33 @@ $per_page = 5;
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 
 // Get total events count
-$count_query = "SELECT COUNT(*) as total FROM announcements a 
-    WHERE a.announcement_type = 'event' 
-    AND a.status = 'active'
-    AND a.needs_volunteers = 1
-    AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())";
+$count_query = "SELECT COUNT(*) as total FROM events e 
+    WHERE e.status = 'upcoming'
+    AND e.event_start_date >= CURDATE()";
     
 $count_result = mysqli_query($connection, $count_query);
 $total_events = mysqli_fetch_assoc($count_result)['total'];
-$total_pages = ceil($total_events / $per_page);
+$total_pages = max(1, ceil($total_events / $per_page));
 
 // Ensure current page is within valid range
 $page = min(max(1, $page), $total_pages);
 $offset = ($page - 1) * $per_page;
 
-// Modify main query to include LIMIT and OFFSET
+// Modify main query to use events table
 $events_query = "SELECT 
-    a.*,
+    e.*,
     u.full_name as created_by_name,
-    COUNT(DISTINCT cv.id) as volunteer_count,
-    cv_user.status as user_volunteer_status
-FROM announcements a 
-LEFT JOIN users u ON a.created_by = u.id 
-LEFT JOIN community_volunteers cv ON cv.announcement_id = a.id 
-LEFT JOIN community_volunteers cv_user ON cv_user.announcement_id = a.id 
-    AND cv_user.resident_id = $current_user_id
-WHERE a.announcement_type = 'event' 
-AND a.status = 'active'
-AND a.needs_volunteers = 1
-AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())
-GROUP BY a.id
-ORDER BY a.event_date ASC
+    COUNT(DISTINCT vr.id) as volunteer_count,
+    v_user.status as user_volunteer_status
+FROM events e 
+LEFT JOIN users u ON e.created_by = u.id 
+LEFT JOIN volunteer_registrations vr ON vr.event_id = e.id 
+LEFT JOIN volunteer_registrations v_user ON v_user.event_id = e.id 
+    AND v_user.resident_id = $current_user_id
+WHERE e.status = 'upcoming'
+AND e.event_start_date >= CURDATE()
+GROUP BY e.id
+ORDER BY e.event_start_date ASC
 LIMIT $per_page OFFSET $offset";
 
 $result = mysqli_query($connection, $events_query);
@@ -92,6 +104,7 @@ if ($result) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Events - Barangay Cawit</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
             margin: 0;
@@ -691,7 +704,7 @@ if ($result) {
                 </a>
                 <a href="announcements.php" class="nav-item active">
                     <i class="fas fa-bullhorn"></i>
-                    Announcements
+                    Events
                 </a>
                 <a href="request-certificate.php" class="nav-item">
                     <i class="fas fa-certificate"></i>
@@ -727,7 +740,7 @@ if ($result) {
             <button class="menu-toggle" id="menuToggle" onclick="toggleSidebar()">
                 <i class="fas fa-bars"></i>
             </button>
-            <h1 class="page-title">Announcements</h1>
+            <h1 class="page-title">Events</h1>
             <div style="display: flex; align-items: center; gap: 1rem;">
                 <span style="color: #666; font-size: 0.9rem;">
                     <i class="fas fa-calendar"></i> <?php echo date('F j, Y'); ?>
@@ -756,7 +769,7 @@ if ($result) {
                             <?php foreach ($events as $ev): ?>
                                 <li class="event-item">
                                     <div class="event-date">
-                                        <?php $d = strtotime($ev['event_date']); ?>
+                                        <?php $d = strtotime($ev['event_start_date']); // Changed from event_date ?>
                                         <div class="day"><?php echo date('j', $d); ?></div>
                                         <div class="month"><?php echo date('M', $d); ?></div>
                                     </div>
@@ -764,23 +777,25 @@ if ($result) {
                                         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                                             <h3><?php echo htmlspecialchars($ev['title']); ?></h3>
                                             <?php
-                            $priorityClass = '';
-                            $priorityText = '';
-                            switch($ev['priority']) {
-                                case 'high':
-                                    $priorityClass = 'priority-high';
-                                    $priorityText = 'Important';
-                                    break;
-                                case 'medium':
-                                    $priorityClass = 'priority-medium';
-                                    $priorityText = 'Medium Priority';
-                                    break;
-                                case 'low':
-                                    $priorityClass = 'priority-low';
-                                    $priorityText = 'Low Priority';
-                                    break;
-                            }
-                            if (!empty($priorityClass)): ?>
+                                            // Only show priority if it exists
+                                            if (isset($ev['event_priority'])): // Changed from priority
+                                                $priorityClass = '';
+                                                $priorityText = '';
+                                                switch($ev['event_priority']) {
+                                                    case 'high':
+                                                        $priorityClass = 'priority-high';
+                                                        $priorityText = 'Important';
+                                                        break;
+                                                    case 'medium':
+                                                        $priorityClass = 'priority-medium';
+                                                        $priorityText = 'Medium Priority';
+                                                        break;
+                                                    case 'low':
+                                                        $priorityClass = 'priority-low';
+                                                        $priorityText = 'Low Priority';
+                                                        break;
+                                                }
+                            ?>
                                 <span class="priority-badge <?php echo $priorityClass; ?>">
                                     <i class="fas fa-exclamation-circle"></i> <?php echo $priorityText; ?>
                                 </span>
@@ -830,7 +845,7 @@ if ($result) {
                                             <?php elseif ($is_logged_in): ?>
                                                 <form method="POST" style="margin: 0;">
                                                     <input type="hidden" name="action" value="volunteer_signup">
-                                                    <input type="hidden" name="announcement_id" value="<?php echo intval($ev['id']); ?>">
+                                                    <input type="hidden" name="event_id" value="<?php echo intval($ev['id']); ?>">
                                                     <button type="submit" class="btn-volunteer" onclick="return confirm('Are you sure you want to volunteer for this event?');">
                                                         <i class="fas fa-hands-helping"></i> Volunteer Now
                                                     </button>
@@ -889,6 +904,83 @@ if ($result) {
         </div>
     </div>
 
+    <!-- SweetAlert message display -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            <?php if (isset($_SESSION['success_message'])): ?>
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success',
+                    text: '<?php echo addslashes($_SESSION['success_message']); ?>',
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+                <?php unset($_SESSION['success_message']); ?>
+            <?php elseif (isset($_SESSION['error_message'])): ?>
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: '<?php echo addslashes($_SESSION['error_message']); ?>',
+                    timer: 3000,
+                    showConfirmButton: false
+                });
+                <?php unset($_SESSION['error_message']); ?>
+            <?php endif; ?>
+        });
+    </script>
+
+    <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebarOverlay');
+            sidebar.classList.toggle('active');
+            overlay.classList.toggle('active');
+        }
+
+        function handleLogout() {
+            if (confirm('Are you sure you want to logout?')) {
+                document.getElementById('logoutForm').submit();
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set active navigation item
+            const currentPage = window.location.pathname.split('/').pop();
+            const navItems = document.querySelectorAll('.nav-item');
+            
+            navItems.forEach(item => {
+                const href = item.getAttribute('href');
+                if (href === currentPage) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        });
+
+        // Close sidebar when clicking on overlay
+        document.getElementById('sidebarOverlay').addEventListener('click', function() {
+            toggleSidebar();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', function() {
+            if (window.innerWidth > 768) {
+                document.getElementById('sidebar').classList.remove('active');
+                document.getElementById('sidebarOverlay').classList.remove('active');
+            }
+            if (window.innerWidth > 768) {
+                document.getElementById('sidebar').classList.remove('active');
+                document.getElementById('sidebarOverlay').classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>
+                
+    </script>
+
     <script>
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
@@ -934,49 +1026,7 @@ if ($result) {
     </script>
 </body>
 </html>
-    <script>
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-        }
-
-        function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                document.getElementById('logoutForm').submit();
-            }
-        }
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            // Set active navigation item
-            const currentPage = window.location.pathname.split('/').pop();
-            const navItems = document.querySelectorAll('.nav-item');
-            navItems.forEach(item => {
-                const href = item.getAttribute('href');
-                if (href === currentPage) {
-                    
-                    item.classList.add('active');
-                } else {
-                    item.classList.remove('active');
-                }
-            });
-        });
-
-        // Close sidebar when clicking on overlay
-        document.getElementById('sidebarOverlay').addEventListener('click', function() {
-            toggleSidebar();
-        });
-
-        // Handle window resize
-        window.addEventListener('resize', function() {
-            if (window.innerWidth > 768) {
-                document.getElementById('sidebar').classList.remove('active');
-                document.getElementById('sidebarOverlay').classList.remove('active');
-            }
         });
     </script>
 </body>
 </html>
-        

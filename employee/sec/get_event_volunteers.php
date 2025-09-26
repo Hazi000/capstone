@@ -3,7 +3,7 @@ session_start();
 require_once '../../config.php';
 
 // Check if user is logged in and is a secretary
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'secretary') {
     header('HTTP/1.1 403 Forbidden');
     echo 'Access denied';
     exit();
