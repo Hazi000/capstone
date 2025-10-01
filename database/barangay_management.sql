@@ -31,15 +31,9 @@ CREATE TABLE `announcements` (
   `id` int(11) NOT NULL,
   `title` varchar(255) NOT NULL,
   `content` text NOT NULL,
-  `priority` enum('low','medium','high') NOT NULL DEFAULT 'low',
   `announcement_type` varchar(20) DEFAULT 'general',
-  `status` enum('active','inactive','expired') NOT NULL DEFAULT 'active',
-  `event_date` date DEFAULT NULL,
-  `event_time` time DEFAULT NULL,
-  `location` varchar(500) DEFAULT NULL,
+  `status` enum('active','inactive','expired') NOT NULL DEFAULT 'active', 
   `expiry_date` date DEFAULT NULL,
-  `needs_volunteers` tinyint(1) DEFAULT 0,
-  `max_volunteers` int(11) DEFAULT NULL,
   `created_by` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
@@ -49,17 +43,17 @@ CREATE TABLE `announcements` (
 -- Dumping data for table `announcements`
 --
 
-INSERT INTO `announcements` (`id`, `title`, `content`, `priority`, `announcement_type`, `status`, `event_date`, `event_time`, `location`, `expiry_date`, `needs_volunteers`, `max_volunteers`, `created_by`, `created_at`, `updated_at`) VALUES
-(7, 'dasbjdba', 'djabdaj', 'medium', 'event', 'expired', '0000-00-00', '00:00:00', '', '0000-00-00', 0, NULL, 2, '2025-07-24 07:28:50', '2025-07-24 07:28:50'),
-(8, 'dakdna', 'ndsjada', 'medium', 'event', 'expired', '2025-07-26', '03:29:00', 'adada', '2025-08-25', 1, 2, 2, '2025-07-24 07:29:41', '2025-09-03 03:05:59'),
-(10, 'dasdja', 'dbsadah', 'medium', 'event', 'expired', '2025-08-28', '09:00:00', 'dada', '2025-08-30', 1, 10, 2, '2025-08-19 05:20:37', '2025-09-03 03:05:59'),
-(11, 'kfkkkj', 'nsadaj', 'low', 'event', 'active', '2025-08-29', '09:00:00', 'kdnsakd', '2026-05-05', 1, 9, 2, '2025-08-19 05:25:10', '2025-08-19 05:25:10'),
-(12, 'vbdhsvah', 'bfhabh', 'medium', 'event', 'active', '2025-09-19', '11:07:00', 'edsa', '2025-09-13', 1, 4, 2, '2025-09-03 03:06:24', '2025-09-03 03:06:24'),
-(13, 'dasdad', 'dadad', 'medium', 'event', 'active', '2025-09-18', '11:17:00', 'dsa', '2025-09-26', 1, 1, 2, '2025-09-03 03:15:57', '2025-09-03 03:15:57'),
-(14, 'dasdad', 'dadadas', 'high', 'event', 'active', '2025-09-26', '02:16:00', 'ds', '2025-09-13', 1, 4, 2, '2025-09-03 03:16:17', '2025-09-03 03:16:17'),
-(15, 'dsada', 'dada', 'medium', 'event', 'active', '2025-09-17', '11:20:00', 'dasda', '2025-09-09', 1, 44, 2, '2025-09-03 03:16:56', '2025-09-03 03:16:56'),
-(16, 'dadad', 'dadada', 'medium', 'event', 'active', '2025-09-18', '11:19:00', 'dsada', '2025-09-27', 1, 23, 2, '2025-09-03 03:17:16', '2025-09-03 03:17:16'),
-(17, 'jasdjab', 'bjasfbaj', 'medium', 'event', 'active', '2025-09-05', '13:20:00', 'dasd', '2025-09-24', 1, 3, 2, '2025-09-04 05:19:39', '2025-09-04 05:19:39');
+INSERT INTO `announcements` (`id`, `title`, `content`, `announcement_type`, `status`, `expiry_date`, `created_by`, `created_at`, `updated_at`) VALUES
+(7, 'dasbjdba', 'djabdaj', 'event', 'expired', '0000-00-00', 2, '2025-07-24 07:28:50', '2025-07-24 07:28:50'),
+(8, 'dakdna', 'ndsjada', 'event', 'expired', '2025-08-25', 2, '2025-07-24 07:29:41', '2025-09-03 03:05:59'),
+(10, 'dasdja', 'dbsadah', 'event', 'expired', '2025-08-30', 2, '2025-08-19 05:20:37', '2025-09-03 03:05:59'),
+(11, 'kfkkkj', 'nsadaj', 'event', 'active', '2026-05-05', 2, '2025-08-19 05:25:10', '2025-08-19 05:25:10'),
+(12, 'vbdhsvah', 'bfhabh', 'event', 'active', '2025-09-13', 2, '2025-09-03 03:06:24', '2025-09-03 03:06:24'),
+(13, 'dasdad', 'dadad', 'event', 'active', '2025-09-26', 2, '2025-09-03 03:15:57', '2025-09-03 03:15:57'),
+(14, 'dasdad', 'dadadas', 'event', 'active', '2025-09-13', 2, '2025-09-03 03:16:17', '2025-09-03 03:16:17'),
+(15, 'dsada', 'dada', 'event', 'active', '2025-09-09', 2, '2025-09-03 03:16:56', '2025-09-03 03:16:56'),
+(16, 'dadad', 'dadada', 'event', 'active', '2025-09-27', 2, '2025-09-03 03:17:16', '2025-09-03 03:17:16'),
+(17, 'jasdjab', 'bjasfbaj', 'event', 'active', '2025-09-24', 2, '2025-09-04 05:19:39', '2025-09-04 05:19:39');
 
 -- --------------------------------------------------------
 
@@ -718,6 +712,12 @@ ALTER TABLE `password_reset_tokens`
 -- Constraints for table `resident_accounts`
 --
 ALTER TABLE `resident_accounts`
+  ADD CONSTRAINT `resident_accounts_ibfk_1` FOREIGN KEY (`resident_id`) REFERENCES `residents` (`id`) ON DELETE CASCADE;
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
   ADD CONSTRAINT `resident_accounts_ibfk_1` FOREIGN KEY (`resident_id`) REFERENCES `residents` (`id`) ON DELETE CASCADE;
 COMMIT;
 

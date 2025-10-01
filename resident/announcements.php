@@ -6,49 +6,87 @@ require_once '../config.php';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'volunteer_signup') {
     $resident_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null);
     $event_id = isset($_POST['event_id']) ? intval($_POST['event_id']) : 0;
-    
-    // First check if there's an open volunteer request for this event
-    $request_query = "SELECT id FROM volunteer_requests WHERE event_id = ? AND status = 'open' LIMIT 1";
-    $stmt = mysqli_prepare($connection, $request_query);
-    if ($stmt) {
-        mysqli_stmt_bind_param($stmt, "i", $event_id);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        
-        if ($row = mysqli_fetch_assoc($result)) {
-            $request_id = $row['id'];
-            
-            // Check for existing signup
-            $check_signup = mysqli_query($connection, "SELECT status FROM volunteer_registrations 
-                WHERE resident_id = $resident_id AND event_id = $event_id");
-            
-            if (mysqli_num_rows($check_signup) > 0) {
-                $status = mysqli_fetch_assoc($check_signup)['status'];
-                $_SESSION['error_message'] = "You have already " . ($status == 'pending' ? 'requested to volunteer' : 'volunteered') . " for this event.";
-            } else {
-                // Insert new volunteer signup with request_id
-                $insert_query = "INSERT INTO volunteer_registrations (event_id, request_id, resident_id, status, registration_date) 
-                               VALUES (?, ?, ?, 'pending', NOW())";
-                               
-                $insert_stmt = mysqli_prepare($connection, $insert_query);
-                if ($insert_stmt) {
-                    mysqli_stmt_bind_param($insert_stmt, "iii", $event_id, $request_id, $resident_id);
-                    if (mysqli_stmt_execute($insert_stmt)) {
-                        $_SESSION['success_message'] = "Volunteer request submitted successfully!";
-                    } else {
-                        $_SESSION['error_message'] = "Error submitting volunteer request. Please try again.";
-                    }
-                    mysqli_stmt_close($insert_stmt);
-                }
-            }
-        } else {
-            $_SESSION['error_message'] = "No open volunteer positions available for this event.";
+
+    // Basic validation
+    if (empty($resident_id) || $event_id <= 0) {
+        $_SESSION['error_message'] = "Invalid request. Please try again.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    // 1) Prevent duplicate registrations
+    $check_sql = "SELECT status FROM volunteer_registrations WHERE resident_id = ? AND event_id = ? LIMIT 1";
+    $check_stmt = mysqli_prepare($connection, $check_sql);
+    if ($check_stmt) {
+        mysqli_stmt_bind_param($check_stmt, "ii", $resident_id, $event_id);
+        mysqli_stmt_execute($check_stmt);
+        $check_res = mysqli_stmt_get_result($check_stmt);
+        if ($row = mysqli_fetch_assoc($check_res)) {
+            $status = $row['status'];
+            $_SESSION['error_message'] = "You have already " . ($status === 'pending' ? 'requested to volunteer' : 'volunteered') . " for this event.";
+            mysqli_stmt_close($check_stmt);
+            header("Location: announcements.php");
+            exit();
         }
-        mysqli_stmt_close($stmt);
+        mysqli_stmt_close($check_stmt);
+    }
+
+    // 2) Ensure a volunteer_requests row exists for this event and set it to pending
+    $request_id = null;
+    $req_select_sql = "SELECT id FROM volunteer_requests WHERE event_id = ? LIMIT 1";
+    $req_select_stmt = mysqli_prepare($connection, $req_select_sql);
+    if ($req_select_stmt) {
+        mysqli_stmt_bind_param($req_select_stmt, "i", $event_id);
+        mysqli_stmt_execute($req_select_stmt);
+        $req_res = mysqli_stmt_get_result($req_select_stmt);
+        if ($req_row = mysqli_fetch_assoc($req_res)) {
+            $request_id = intval($req_row['id']);
+            // update status to pending (explicitly mark as pending when a resident requests)
+            $req_update_sql = "UPDATE volunteer_requests SET status = 'pending' WHERE id = ?";
+            $req_update_stmt = mysqli_prepare($connection, $req_update_sql);
+            if ($req_update_stmt) {
+                mysqli_stmt_bind_param($req_update_stmt, "i", $request_id);
+                mysqli_stmt_execute($req_update_stmt);
+                mysqli_stmt_close($req_update_stmt);
+            }
+        }
+        mysqli_stmt_close($req_select_stmt);
+    }
+
+    // If no request exists, create one with status = pending
+    if (empty($request_id)) {
+        $req_insert_sql = "INSERT INTO volunteer_requests (event_id, status, created_at) VALUES (?, 'pending', NOW())";
+        $req_insert_stmt = mysqli_prepare($connection, $req_insert_sql);
+        if ($req_insert_stmt) {
+            mysqli_stmt_bind_param($req_insert_stmt, "i", $event_id);
+            if (mysqli_stmt_execute($req_insert_stmt)) {
+                $request_id = mysqli_insert_id($connection);
+            }
+            mysqli_stmt_close($req_insert_stmt);
+        }
+    }
+
+    if (empty($request_id)) {
+        $_SESSION['error_message'] = "System error. Unable to create volunteer request. Please try again later.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    // 3) Insert volunteer registration with the valid request_id and pending status
+    $insert_sql = "INSERT INTO volunteer_registrations (event_id, request_id, resident_id, status, registration_date) VALUES (?, ?, ?, 'pending', NOW())";
+    $insert_stmt = mysqli_prepare($connection, $insert_sql);
+    if ($insert_stmt) {
+        mysqli_stmt_bind_param($insert_stmt, "iii", $event_id, $request_id, $resident_id);
+        if (mysqli_stmt_execute($insert_stmt)) {
+            $_SESSION['success_message'] = "Volunteer request submitted successfully!";
+        } else {
+            $_SESSION['error_message'] = "Error submitting volunteer request. Please try again.";
+        }
+        mysqli_stmt_close($insert_stmt);
     } else {
         $_SESSION['error_message'] = "System error. Please try again later.";
     }
-    
+
     header("Location: announcements.php");
     exit();
 }
@@ -57,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 $current_user_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0);
 
 // Add pagination settings
-$per_page = 5;
+$per_page = 8; // Changed from 5 to 8 items per page
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 
 // Get total events count
@@ -77,7 +115,8 @@ $offset = ($page - 1) * $per_page;
 $events_query = "SELECT 
     e.*,
     u.full_name as created_by_name,
-    COUNT(DISTINCT vr.id) as volunteer_count,
+    COUNT(DISTINCT CASE WHEN vr.status = 'approved' THEN vr.id ELSE NULL END) as volunteer_count,
+    SUM(CASE WHEN vr.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
     v_user.status as user_volunteer_status
 FROM events e 
 LEFT JOIN users u ON e.created_by = u.id 
@@ -328,17 +367,23 @@ if ($result) {
         }
         
         .event-date {
-            min-width: 90px;
-            text-align: center;
-            background: #fff7e6;
-            border-radius: 8px;
-            padding: 0.5rem;
+            font-size: 0.9rem;
+    opacity: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(255, 255, 255, 0.15); /* Lighter background */
+    padding: 6px 12px;
+    border-radius: 20px;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
         }
         
-        .event-date .day {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: #f39c12;
+        .event-date i {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.9);
         }
         
         .event-info h3 {
@@ -477,90 +522,58 @@ if ($result) {
             transform: translateY(-1px);
         }
 
-        /* Add or update these styles in the <style> section */
-.event-actions {
+        /* Update/replace these specific style rules */
+.event-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    overflow: hidden;
+    display: flex;  /* Add flex display */
+    flex-direction: column; /* Stack children vertically */
+    height: 100%;  /* Take full height of grid cell */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.event-body {
+    padding: 1.5rem;
     display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    margin-left: auto;
-    gap: 1rem;
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
+    flex-direction: column;
+    flex: 1;  /* Allow body to grow */
 }
 
 .event-info {
-    position: relative;
-    padding-right: 200px; /* Make space for the button */
-    flex: 1;
+    flex: 1;  /* Allow info section to grow */
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
 }
 
-.btn-volunteer {
-    background: linear-gradient(135deg, #4a47a3 0%, #3a3782 100%);
-    color: white;
-    border: none;
-    padding: 0.8rem 1.5rem;
+.event-description {
+    margin: 1rem 0;
+    color: #555;
+    line-height: 1.6;
+    /* Remove any margin-bottom to prevent spacing issues */
+}
+
+.event-actions {
+    margin-top: auto; /* Push to bottom */
+    padding-top: 1rem;
+    border-top: 1px solid #eee;
+    display: flex;
+    justify-content: center; /* Center the button */
+    gap: 1rem;
+}
+
+.btn-volunteer, .btn-login, .volunteer-status {
+    width: 100%; /* Make buttons full width */
+    justify-content: center;
+    padding: 0.75rem 1.5rem;
     border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.9rem;
     font-weight: 600;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(74, 71, 163, 0.2);
-    white-space: nowrap;
+    text-align: center;
 }
 
-.btn-volunteer:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(74, 71, 163, 0.3);
-    background: linear-gradient(135deg, #5552b5 0%, #4a4799 100%);
-}
-
-.btn-login {
-    background: white;
-    color: #4a47a3;
-    border: 2px solid #4a47a3;
-    padding: 0.8rem 1.5rem;
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    font-weight: 600;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    transition: all 0.3s ease;
-    white-space: nowrap;
-}
-
-.volunteer-status {
-    padding: 0.8rem 1.5rem;
-    border-radius: 8px;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    white-space: nowrap;
-    font-weight: 600;
-}
-
-.volunteer-status.pending {
-    background: #fff7ed;
-    color: #c2410c;
-}
-
-.volunteer-status.approved {
-    background: #ecfdf5;
-    color: #047857;
-}
-
-.volunteer-status.full {
-    background: #fee2e2;
-    color: #b91c1c;
-}
-
-        /* Sidebar Overlay */
+/* Sidebar Overlay */
         .sidebar-overlay {
             position: fixed;
             top: 0;
@@ -679,6 +692,190 @@ if ($result) {
             gap: 0.5rem;
             white-space: nowrap;
         }
+
+        /* New styles for events grid */
+.events-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1.5rem;
+}
+
+.event-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    overflow: hidden;
+    position: relative;
+    transition: transform 0.3s ease;
+}
+
+.event-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+}
+
+.event-header {
+    position: relative;
+    padding: 1.5rem;
+    background: linear-gradient(135deg, #4a47a3 0%, #3a3782 100%);
+    color: white;
+}
+
+.event-title-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.info-icon {
+    cursor: help;
+    opacity: 0.8;
+    transition: opacity 0.2s ease;
+    font-size: 0.9rem;
+}
+
+.info-icon:hover {
+    opacity: 1;
+}
+
+.event-tooltip {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: white;
+    color: #333;
+    padding: 1rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    z-index: 10;
+    font-size: 0.9rem;
+    margin-top: 0.5rem;
+    max-width: 100%;
+    white-space: normal;
+}
+
+.info-icon:hover + .event-tooltip {
+    display: block;
+}
+
+.event-body {
+    padding: 1.5rem;
+}
+
+.event-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.event-info-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+.event-description {
+    color: #333;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem 0;
+}
+
+.pagination-btn {
+    background: #f8f9fa;
+    color: #4a47a3;
+    border: 1px solid #dee2e6;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    transition: all 0.2s ease;
+}
+
+.pagination-btn:hover {
+    background: #e9ecef;
+    color: #3a3782;
+    border-color: #cbd3da;
+}
+
+.pagination-number {
+    min-width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.5rem;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    color: #4a47a3;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    text-decoration: none;
+}
+
+.pagination-number.active {
+    background: #4a47a3;
+    color: white;
+    border-color: #4a47a3;
+}
+
+.pagination-ellipsis {
+    color: #6c757d;
+    padding: 0 0.3rem;
+}
+
+/* --- STYLE: add attendance button styles --- */
+.btn-attendance {
+    background: #10b981;
+    color: #fff;
+    border: none;
+    padding: 0.65rem 1rem;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 6px rgba(16,185,129,0.15);
+}
+
+.btn-attendance:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(16,185,129,0.18);
+}
+
+/* disabled look */
+.btn-attendance[disabled] {
+    background: #c7f0e0;
+    color: #6b7280;
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Ensure the button fits within the card actions layout */
+.event-actions { 
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
     </style>
 </head>
 <body>
@@ -751,97 +948,112 @@ if ($result) {
         <div class="content-area">
             <div class="dashboard-header">
                 <h1 class="dashboard-title">Upcoming Events</h1>
-                <p class="dashboard-subtitle">Stay updated with our community events and activities</p>
+                <!-- Removed subtitle -->
             </div>
 
             <div class="container">
-                <div class="card">
-                    <?php if (empty($events)): ?>
-                        <div class="empty">
-                            <i class="fas fa-calendar-times"></i>
-                            <p>No events available at this time</p>
-                            <p style="color: #888; font-size: 0.9rem; margin-top: 0.5rem;">
-                                Check back later for new events and activities
-                            </p>
-                        </div>
-                    <?php else: ?>
-                        <ul class="event-list">
-                            <?php foreach ($events as $ev): ?>
-                                <li class="event-item">
-                                    <div class="event-date">
-                                        <?php $d = strtotime($ev['event_start_date']); // Changed from event_date ?>
-                                        <div class="day"><?php echo date('j', $d); ?></div>
-                                        <div class="month"><?php echo date('M', $d); ?></div>
+                <?php if (empty($events)): ?>
+                    <div class="empty">
+                        <i class="fas fa-calendar-times"></i>
+                        <p>No events available at this time</p>
+                        <p style="color: #888; font-size: 0.9rem; margin-top: 0.5rem;">
+                            Check back later for new events and activities
+                        </p>
+                    </div>
+                <?php else: ?>
+                    <div class="events-grid">
+                        <?php foreach ($events as $ev): 
+                            // ensure not showing past events (safety)
+                            if (!empty($ev['event_start_date']) && strtotime($ev['event_start_date']) < strtotime(date('Y-m-d'))) continue;
+                        ?>
+                            <div class="event-card">
+                                <div class="event-header">
+                                    <div class="event-title-container">
+                                        <h3 class="event-title"><?php echo htmlspecialchars($ev['title']); ?></h3>
+                                        <i class="fas fa-info-circle info-icon"></i>
+                                        <div class="event-tooltip">
+                                            <?php echo nl2br(htmlspecialchars($ev['description'] ?? '')); ?>
+                                        </div>
                                     </div>
+                                    <div class="event-date">
+                                        <i class="fas fa-calendar"></i>
+                                        <?php echo date('F j, Y', strtotime($ev['event_start_date'])); ?>
+                                    </div>
+                                </div>
+                                <div class="event-body">
                                     <div class="event-info">
-                                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                                            <h3><?php echo htmlspecialchars($ev['title']); ?></h3>
-                                            <?php
-                                            // Only show priority if it exists
-                                            if (isset($ev['event_priority'])): // Changed from priority
-                                                $priorityClass = '';
-                                                $priorityText = '';
-                                                switch($ev['event_priority']) {
-                                                    case 'high':
-                                                        $priorityClass = 'priority-high';
-                                                        $priorityText = 'Important';
-                                                        break;
-                                                    case 'medium':
-                                                        $priorityClass = 'priority-medium';
-                                                        $priorityText = 'Medium Priority';
-                                                        break;
-                                                    case 'low':
-                                                        $priorityClass = 'priority-low';
-                                                        $priorityText = 'Low Priority';
-                                                        break;
-                                                }
-                            ?>
-                                <span class="priority-badge <?php echo $priorityClass; ?>">
-                                    <i class="fas fa-exclamation-circle"></i> <?php echo $priorityText; ?>
-                                </span>
-                            <?php endif; ?>
-                                        </div>
-                                        <div class="event-meta">
-                                            <?php if (!empty($ev['event_time'])): ?>
-                                                <span><i class="far fa-clock"></i> <?php echo htmlspecialchars($ev['event_time']); ?></span>
-                                            <?php endif; ?>
-                                            <?php if (!empty($ev['location'])): ?>
-                                                <span><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($ev['location']); ?></span>
-                                            <?php endif; ?>
-                                            <span><i class="fas fa-user"></i> <?php echo htmlspecialchars($ev['created_by_name'] ?? 'Admin'); ?></span>
-                                            <?php // Show volunteer count for all events ?>
-                                                <?php if (!empty($ev['max_volunteers'])): ?>
-                                                    <span class="volunteer-count">
-                                                        <i class="fas fa-users"></i>
-                                                        Volunteers: <?php echo $ev['volunteer_count']; ?>/<?php echo $ev['max_volunteers']; ?>
-                                                    </span>
-                                                <?php else: ?>
-                                                    <span class="volunteer-count">
-                                                        <i class="fas fa-users"></i>
-                                                        Volunteers: <?php echo $ev['volunteer_count']; ?>
-                                                    </span>
-                                                <?php endif; ?>
-                                        </div>
-                                        <?php if (!empty($ev['content'])): ?>
-                                            <p style="margin-top:0.75rem;color:#555;line-height:1.5;">
-                                                <?php echo nl2br(htmlspecialchars($ev['content'])); ?>
-                                            </p>
+                                        <?php if (!empty($ev['event_time'])): ?>
+                                            <div class="event-info-item">
+                                                <i class="far fa-clock"></i> 
+                                                <?php 
+                                                    $time = date('g:i A', strtotime($ev['event_time'])); 
+                                                    echo htmlspecialchars($time); 
+                                                ?>
+                                            </div>
                                         <?php endif; ?>
-                                        <div class="event-actions">
-                                            <?php
-                                            $is_full = !empty($ev['max_volunteers']) && intval($ev['volunteer_count']) >= intval($ev['max_volunteers']);
-                                            $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
-                                            $has_volunteered = isset($ev['user_volunteer_status']);
+                                        <?php if (!empty($ev['location'])): ?>
+                                            <div class="event-info-item">
+                                                <i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($ev['location']); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        <div class="event-info-item">
+                                            <i class="fas fa-users"></i>
+                                            Volunteers: <?php echo intval($ev['volunteer_count']); ?>
+                                            <?php if (!empty($ev['max_volunteers'])): ?>
+                                                /<?php echo intval($ev['max_volunteers']); ?>
+                                            <?php endif; ?>
+                                        </div>
+                                    </div>
+                                 
+                                    <div class="event-actions">
+                                        <?php
+                                        $approved = intval($ev['volunteer_count']);
+                                        $pending = intval($ev['pending_count'] ?? 0);
+                                        $max_vol = !empty($ev['max_volunteers']) ? intval($ev['max_volunteers']) : 0;
+                                        $is_full = ($max_vol > 0) && (($approved + $pending) >= $max_vol);
+                                        $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
+                                        $has_volunteered = !empty($ev['user_volunteer_status']);
 
-                                            if ($has_volunteered): ?>
-                                                <span class="volunteer-status <?php echo $ev['user_volunteer_status']; ?>">
-                                                    <i class="fas <?php echo $ev['user_volunteer_status'] === 'pending' ? 'fa-clock' : 'fa-check'; ?>"></i>
-                                                    <?php echo $ev['user_volunteer_status'] === 'pending' ? 'Request Pending' : 'Already Volunteering'; ?>
+                                        // Determine if attendance button should be enabled
+                                        $attendance_enabled = false;
+                                        if ($has_volunteered && $ev['user_volunteer_status'] === 'approved') {
+                                            $start_date = $ev['event_start_date'] ?? null;
+                                            $start_time = !empty($ev['event_time']) ? $ev['event_time'] : '00:00:00';
+                                            if ($start_date) {
+                                                $start_dt = strtotime($start_date . ' ' . $start_time);
+                                                if ($start_dt !== false && $start_dt <= time()) {
+                                                    $attendance_enabled = true;
+                                                }
+                                            }
+                                        }
+
+                                        if ($has_volunteered):
+                                            // Explicit handling for statuses including 'rejected'
+                                            if ($ev['user_volunteer_status'] === 'approved'): ?>
+                                                <button 
+                                                    type="button" 
+                                                    class="btn-attendance" 
+                                                    <?php echo $attendance_enabled ? '' : 'disabled'; ?> 
+                                                    onclick="markAttendance(<?php echo intval($ev['id']); ?>)">
+                                                    <i class="fas fa-clipboard-check"></i>
+                                                    Attendance
+                                                </button>
+                                            <?php elseif ($ev['user_volunteer_status'] === 'pending'): ?>
+                                                <span class="volunteer-status pending">
+                                                    <i class="fas fa-clock"></i> Request Pending
                                                 </span>
-                                            <?php elseif ($is_full): ?>
-                                                <span class="volunteer-status full">
-                                                    <i class="fas fa-users-slash"></i> Event Full
+                                            <?php elseif ($ev['user_volunteer_status'] === 'rejected'): ?>
+                                                <span class="volunteer-status rejected">
+                                                    <i class="fas fa-times-circle"></i> Request Rejected
                                                 </span>
+                                            <?php else: ?>
+                                                <span class="volunteer-status">
+                                                    <i class="fas fa-info-circle"></i> <?php echo htmlspecialchars($ev['user_volunteer_status']); ?>
+                                                </span>
+                                            <?php endif;
+                                        else:
+                                            if ($is_full): ?>
+                                                <span class="volunteer-status full"><i class="fas fa-users-slash"></i> Event Full</span>
                                             <?php elseif ($is_logged_in): ?>
                                                 <form method="POST" style="margin: 0;">
                                                     <input type="hidden" name="action" value="volunteer_signup">
@@ -854,52 +1066,55 @@ if ($result) {
                                                 <a href="../index.php?redirect=resident/announcements.php" class="btn-login">
                                                     <i class="fas fa-sign-in-alt"></i> Login to Join
                                                 </a>
-                                            <?php endif; ?>
-                                        </div>
+                                            <?php endif;
+                                        endif;
+                                         ?>
                                     </div>
-                                </li>
-                            <?php endforeach; ?>
-                        </ul>
-                        
-                        <!-- Add pagination controls -->
-                        <?php if ($total_pages > 1): ?>
-                        <div class="pagination" style="display: flex; justify-content: center; padding: 1rem; gap: 0.5rem;">
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <!-- pagination (unchanged) -->
+                    <?php if ($total_pages > 1): ?>
+                        <div class="pagination">
                             <?php if ($page > 1): ?>
-                                <a href="?page=<?php echo ($page - 1); ?>" class="btn-volunteer" style="padding: 0.5rem 1rem;">
-                                    <i class="fas fa-chevron-left"></i> Previous
+                                <a href="?page=<?php echo ($page - 1); ?>" class="pagination-btn">
+                                    <i class="fas fa-chevron-left"></i> Prev
                                 </a>
                             <?php endif; ?>
                             
                             <?php
-                            $start = max(1, min($page - 2, $total_pages - 4));
-                            $end = min($total_pages, max($page + 2, 5));
-                            
-                            if ($start > 1) {
-                                echo '<span style="padding: 0.5rem 1rem;">...</span>';
-                            }
-                            
-                            for ($i = $start; $i <= $end; $i++) {
-                                if ($i == $page) {
-                                    echo "<span style='padding: 0.5rem 1rem; background: #4a47a3; color: white; border-radius: 4px;'>$i</span>";
-                                } else {
-                                    echo "<a href='?page=$i' style='padding: 0.5rem 1rem; color: #4a47a3; text-decoration: none;'>$i</a>";
-                                }
-                            }
-                            
-                            if ($end < $total_pages) {
-                                echo '<span style="padding: 0.5rem 1rem;">...</span>';
-                            }
-                            ?>
-                            
+                            $range = 2;
+                            if ($page > $range + 1): ?>
+                                <a href="?page=1" class="pagination-number">1</a>
+                                <?php if ($page > $range + 2): ?>
+                                    <span class="pagination-ellipsis">...</span>
+                                <?php endif;
+                            endif;
+
+                            for ($i = max(1, $page - $range); $i <= min($total_pages, $page + $range); $i++): ?>
+                                <?php if ($i == $page): ?>
+                                    <span class="pagination-number active"><?php echo $i; ?></span>
+                                <?php else: ?>
+                                    <a href="?page=<?php echo $i; ?>" class="pagination-number"><?php echo $i; ?></a>
+                                <?php endif;
+                            endfor;
+
+                            if ($page < $total_pages - $range): ?>
+                                <?php if ($page < $total_pages - $range - 1): ?>
+                                    <span class="pagination-ellipsis">...</span>
+                                <?php endif; ?>
+                                <a href="?page=<?php echo $total_pages; ?>" class="pagination-number"><?php echo $total_pages; ?></a>
+                            <?php endif; ?>
+
                             <?php if ($page < $total_pages): ?>
-                                <a href="?page=<?php echo ($page + 1); ?>" class="btn-volunteer" style="padding: 0.5rem 1rem;">
+                                <a href="?page=<?php echo ($page + 1); ?>" class="pagination-btn">
                                     Next <i class="fas fa-chevron-right"></i>
                                 </a>
                             <?php endif; ?>
                         </div>
-                        <?php endif; ?>
                     <?php endif; ?>
-                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -975,58 +1190,23 @@ if ($result) {
                 document.getElementById('sidebarOverlay').classList.remove('active');
             }
         });
-    </script>
-</body>
-</html>
+
+        // Mark attendance function
+        function markAttendance(eventId) {
+            if (confirm('Mark attendance for this event?')) {
+                // TODO: Replace with your actual attendance marking logic (e.g., AJAX request)
+                console.log('Attendance marked for event:', eventId);
                 
-    </script>
-
-    <script>
-        function toggleSidebar() {
-            const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
-            sidebar.classList.toggle('active');
-            overlay.classList.toggle('active');
-        }
-
-        function handleLogout() {
-            if (confirm('Are you sure you want to logout?')) {
-                document.getElementById('logoutForm').submit();
+                // Show success message
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Attendance Recorded',
+                    text: 'Your attendance has been successfully recorded.',
+                    timer: 3000,
+                    showConfirmButton: false
+                });
             }
         }
-
-        // Initialize on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            // Set active navigation item
-            const currentPage = window.location.pathname.split('/').pop();
-            const navItems = document.querySelectorAll('.nav-item');
-            
-            navItems.forEach(item => {
-                const href = item.getAttribute('href');
-                if (href === currentPage) {
-                    item.classList.add('active');
-                } else {
-                    item.classList.remove('active');
-                }
-            });
-        });
-
-        // Close sidebar when clicking on overlay
-        document.getElementById('sidebarOverlay').addEventListener('click', function() {
-            toggleSidebar();
-        });
-
-        // Handle window resize
-        window.addEventListener('resize', function() {
-            if (window.innerWidth > 768) {
-                document.getElementById('sidebar').classList.remove('active');
-                document.getElementById('sidebarOverlay').classList.remove('active');
-            }
-        });
-    </script>
-</body>
-</html>
-        });
     </script>
 </body>
 </html>

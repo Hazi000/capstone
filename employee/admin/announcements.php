@@ -14,18 +14,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'create':
                 $title = mysqli_real_escape_string($connection, $_POST['title']);
                 $content = mysqli_real_escape_string($connection, $_POST['content']);
-                $priority = mysqli_real_escape_string($connection, $_POST['priority']);
                 $announcement_type = mysqli_real_escape_string($connection, $_POST['announcement_type']);
-                $event_date = mysqli_real_escape_string($connection, $_POST['event_date']);
-                $event_time = mysqli_real_escape_string($connection, $_POST['event_time']);
-                $location = mysqli_real_escape_string($connection, $_POST['location']);
                 $expiry_date = mysqli_real_escape_string($connection, $_POST['expiry_date']);
-                $needs_volunteers = ($announcement_type === 'event' && isset($_POST['needs_volunteers'])) ? 1 : 0;
-                $max_volunteers = $needs_volunteers ? mysqli_real_escape_string($connection, $_POST['max_volunteers']) : 'NULL';
                 $created_by = $_SESSION['user_id'];
 
-                $query = "INSERT INTO announcements (title, content, priority, announcement_type, event_date, event_time, location, expiry_date, needs_volunteers, max_volunteers, created_by, status) 
-                         VALUES ('$title', '$content', '$priority', '$announcement_type', '$event_date', '$event_time', '$location', '$expiry_date', $needs_volunteers, $max_volunteers, '$created_by', 'active')";
+                $query = "INSERT INTO announcements (title, content, announcement_type, expiry_date, created_by, status) 
+                         VALUES ('$title', '$content', '$announcement_type', '$expiry_date', '$created_by', 'active')";
                 
                 if (mysqli_query($connection, $query)) {
                     $_SESSION['success_message'] = "Announcement created successfully!";
@@ -38,22 +32,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $id = mysqli_real_escape_string($connection, $_POST['id']);
                 $title = mysqli_real_escape_string($connection, $_POST['title']);
                 $content = mysqli_real_escape_string($connection, $_POST['content']);
-                $priority = mysqli_real_escape_string($connection, $_POST['priority']);
                 $announcement_type = mysqli_real_escape_string($connection, $_POST['announcement_type']);
-                $event_date = mysqli_real_escape_string($connection, $_POST['event_date']);
-                $event_time = mysqli_real_escape_string($connection, $_POST['event_time']);
-                $location = mysqli_real_escape_string($connection, $_POST['location']);
                 $expiry_date = mysqli_real_escape_string($connection, $_POST['expiry_date']);
-                $needs_volunteers = ($announcement_type === 'event' && isset($_POST['needs_volunteers'])) ? 1 : 0;
-                $max_volunteers = $needs_volunteers ? mysqli_real_escape_string($connection, $_POST['max_volunteers']) : 'NULL';
                 $status = mysqli_real_escape_string($connection, $_POST['status']);
 
                 $query = "UPDATE announcements 
-                         SET title = '$title', content = '$content', priority = '$priority', 
-                             announcement_type = '$announcement_type', event_date = '$event_date', 
-                             event_time = '$event_time', location = '$location',
-                             expiry_date = '$expiry_date', needs_volunteers = $needs_volunteers, 
-                             max_volunteers = $max_volunteers, status = '$status', updated_at = NOW()
+                         SET title = '$title', content = '$content', 
+                             announcement_type = '$announcement_type', 
+                             expiry_date = '$expiry_date', status = '$status', updated_at = NOW()
                          WHERE id = '$id'";
                 
                 if (mysqli_query($connection, $query)) {
@@ -93,7 +79,6 @@ $stats['pending_appointments'] = mysqli_fetch_assoc($result)['pending'];
 // Fetch all announcements
 $search = isset($_GET['search']) ? mysqli_real_escape_string($connection, $_GET['search']) : '';
 $filter_status = isset($_GET['status']) ? mysqli_real_escape_string($connection, $_GET['status']) : '';
-$filter_priority = isset($_GET['priority']) ? mysqli_real_escape_string($connection, $_GET['priority']) : '';
 $filter_type = isset($_GET['type']) ? mysqli_real_escape_string($connection, $_GET['type']) : '';
 
 // --- added: pagination settings (10 per page) and COUNT query that respects filters
@@ -106,9 +91,6 @@ if ($search) {
 }
 if ($filter_status) {
     $count_query .= " AND a.status = '$filter_status'";
-}
-if ($filter_priority) {
-    $count_query .= " AND a.priority = '$filter_priority'";
 }
 if ($filter_type) {
     $count_query .= " AND a.announcement_type = '$filter_type'";
@@ -132,10 +114,6 @@ if ($search) {
 
 if ($filter_status) {
     $query .= " AND a.status = '$filter_status'";
-}
-
-if ($filter_priority) {
-    $query .= " AND a.priority = '$filter_priority'";
 }
 
 if ($filter_type) {
@@ -222,17 +200,21 @@ if (isset($_GET['edit'])) {
             padding: 1rem;
             background: rgba(255,255,255,0.1);
             border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
         }
 
         .user-name {
             font-weight: bold;
             font-size: 1rem;
+            color: #fff;
         }
 
         .user-role {
             font-size: 0.85rem;
-            opacity: 0.8;
             color: #3498db;
+            font-weight: 500;
         }
 
         .sidebar-nav {
@@ -294,6 +276,237 @@ if (isset($_GET['edit'])) {
 
         .nav-badge.blue {
             background: #3498db;
+        }
+
+        /* Fixed logout section positioning */
+        .logout-section {
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+            margin-top: auto;
+        }
+
+        .logout-btn {
+            width: 100%;
+            background: rgba(231, 76, 60, 0.2);
+            color: white;
+            border: 1px solid rgba(231, 76, 60, 0.5);
+            padding: 0.75rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .logout-btn:hover {
+            background: rgba(231, 76, 60, 0.3);
+            border-color: #e74c3c;
+            transform: translateY(-1px);
+        }
+
+        /* Main Content */
+        .main-content {
+            margin-left: 280px;
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+
+        .top-bar {
+            background: white;
+            padding: 1rem 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #333;
+            cursor: pointer;
+        }
+
+        .page-title {
+            font-size: 1.5rem;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .content-area {
+            padding: 2rem;
+        }
+
+        /* Alert Messages */
+        .alert {
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert i {
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        .alert-close {
+            margin-left: auto;
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            cursor: pointer;
+            color: inherit;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .alert-close:hover {
+            opacity: 1;
+        }
+
+        /* Action Header */
+        .action-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .action-title {
+            font-size: 2rem;
+            color: #333;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: #3498db;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        /* Updated Filter Section Styles */
+        .filter-section {
+            background: white;
+            padding: 0.5rem;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+            width: fit-content;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .filter-group {
+            min-width: 120px;
+            margin: 0;
+        }
+
+        .filter-group:first-child {
+            min-width: 180px;
+        }
+
+        .filter-group label {
+            display: none;
+        }
+
+        .form-control {
+            height: 38px;
+            padding: 0.375rem 0.75rem;
+            font-size: 0.875rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            background: #f8fafc;
+        }
+
+        .form-control::placeholder {
+            color: #94a3b8;
+            font-size: 0.875rem;
+        }
+
+        .btn-filter {
+            height: 38px;
+            padding: 0 1rem;
+            font-size: 0.875rem;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
         }
 
         /* Fixed logout section positioning */
@@ -1082,40 +1295,6 @@ if (isset($_GET['edit'])) {
         .type-label.event i { color: #7b4397; }
         .type-label.meeting i { color: #155724; }
 
-        .priority-select {
-            display: flex;
-            gap: 1rem;
-            margin-top: 0.5rem;
-        }
-
-        .priority-option {
-            flex: 1;
-        }
-
-        .priority-label {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-
-        .priority-option input[type="radio"] {
-            display: none;
-        }
-
-        .priority-option input[type="radio"]:checked + .priority-label {
-            border-color: currentColor;
-            background: rgba(0,0,0,0.05);
-        }
-
-        .priority-label.low { color: #155724; }
-        .priority-label.medium { color: #856404; }
-        .priority-label.high { color: #721c24; }
-
         /* Overlay for mobile */
         .sidebar-overlay {
             position: fixed;
@@ -1150,9 +1329,9 @@ if (isset($_GET['edit'])) {
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
+                <div class="user-role">Super Admin</div>
             </div>
         </div>
-        <div class="user-role">Super Admin</div>
 
         <div class="sidebar-nav">
             <div class="nav-section">
@@ -1326,15 +1505,6 @@ if (isset($_GET['edit'])) {
                             <option value="expired" <?php echo $filter_status === 'expired' ? 'selected' : ''; ?>>Expired</option>
                         </select>
                     </div>
-                    <div class="filter-group">
-                        <select id="priority" name="priority" class="form-control">
-                            <option value="">All</option>
-                            <option value="active" <?php echo !$filter_priority || $filter_priority === 'active' ? 'selected' : 'selected'; ?>>Active</option>
-                            <option value="low" <?php echo $filter_priority === 'low' ? 'selected' : ''; ?>>Low</option>
-                            <option value="medium" <?php echo $filter_priority === 'medium' ? 'selected' : ''; ?>>Medium</option>
-                            <option value="high" <?php echo $filter_priority === 'high' ? 'selected' : ''; ?>>High</option>
-                        </select>
-                    </div>
                     <button type="submit" class="btn-filter">
                         <i class="fas fa-filter"></i>
                         Filter
@@ -1348,28 +1518,19 @@ if (isset($_GET['edit'])) {
                     <table class="table">
                         <thead>
                             <tr>
+                                <th>#</th>
                                 <th>Announcement</th>
                                 <th>Type</th>
-                                <th>Priority</th>
-                                <th>Status</th>
-                                <th>Event Details</th>
-                                <th>Volunteers</th>
-                                <th>Expiry Date</th>
-                                <th>Created By</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php while ($announcement = mysqli_fetch_assoc($announcements)): ?>
-                                <?php
-                                    // Check if announcement is expired
-                                    if ($announcement['expiry_date'] && strtotime($announcement['expiry_date']) < time() && $announcement['status'] !== 'expired') {
-                                        $update_status = "UPDATE announcements SET status = 'expired' WHERE id = " . $announcement['id'];
-                                        mysqli_query($connection, $update_status);
-                                        $announcement['status'] = 'expired';
-                                    }
-                                ?>
+                            <?php 
+                            $counter = ($page - 1) * $per_page + 1;
+                            while ($announcement = mysqli_fetch_assoc($announcements)): 
+                            ?>
                                 <tr>
+                                    <td><?php echo $counter++; ?></td>
                                     <td>
                                         <div class="announcement-title"><?php echo htmlspecialchars($announcement['title']); ?></div>
                                         <div class="announcement-content"><?php echo htmlspecialchars($announcement['content']); ?></div>
@@ -1393,47 +1554,6 @@ if (isset($_GET['edit'])) {
                                             <i class="fas <?php echo $icon; ?>"></i>
                                             <?php echo ucfirst($type); ?>
                                         </span>
-                                    </td>
-                                    <td>
-                                        <span class="priority-badge priority-<?php echo $announcement['priority']; ?>">
-                                            <?php echo ucfirst($announcement['priority']); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span class="status-badge status-<?php echo $announcement['status']; ?>">
-                                            <?php echo ucfirst($announcement['status']); ?>
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <?php if ($announcement['event_date']): ?>
-                                            <strong><?php echo date('M j, Y', strtotime($announcement['event_date'])); ?></strong>
-                                            <?php if ($announcement['event_time']): ?>
-                                                <br><small><i class="fas fa-clock"></i> <?php echo date('g:i A', strtotime($announcement['event_time'])); ?></small>
-                                            <?php endif; ?>
-                                            <?php if ($announcement['location']): ?>
-                                                <br><small><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($announcement['location']); ?></small>
-                                            <?php endif; ?>
-                                        <?php else: ?>
-                                            <span style="color: #999;">No event details</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php if ($announcement['needs_volunteers']): ?>
-                                            <div class="volunteer-info-badge">
-                                                <i class="fas fa-hands-helping"></i>
-                                                <?php echo $announcement['volunteer_count']; ?>/<?php echo $announcement['max_volunteers'] ?: '∞'; ?>
-                                            </div>
-                                        <?php else: ?>
-                                            <span style="color: #999;">-</span>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td>
-                                        <?php echo $announcement['expiry_date'] ? date('M j, Y', strtotime($announcement['expiry_date'])) : 'No expiry'; ?>
-                                    </td>
-                                    <td>
-                                        <?php echo htmlspecialchars($announcement['created_by_name'] ?? 'Unknown'); ?>
-                                        <br>
-                                        <small style="color: #666;"><?php echo date('M j, Y', strtotime($announcement['created_at'])); ?></small>
                                     </td>
                                     <td>
                                         <div class="table-actions">
@@ -1614,30 +1734,6 @@ if (isset($_GET['edit'])) {
                     </div>
 
                     <div class="form-group">
-                        <label>Priority <span style="color: red;">*</span></label>
-                        <div class="priority-select">
-                            <div class="priority-option">
-                                <input type="radio" id="priority_low" name="priority" value="low" checked>
-                                <label for="priority_low" class="priority-label low">
-                                    <i class="fas fa-flag"></i> Low
-                                </label>
-                            </div>
-                            <div class="priority-option">
-                                <input type="radio" id="priority_medium" name="priority" value="medium">
-                                <label for="priority_medium" class="priority-label medium">
-                                    <i class="fas fa-flag"></i> Medium
-                                </label>
-                            </div>
-                            <div class="priority-option">
-                                <input type="radio" id="priority_high" name="priority" value="high">
-                                <label for="priority_high" class="priority-label high">
-                                    <i class="fas fa-flag"></i> High
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="form-group">
                         <label for="expiry_date">Expiry Date</label>
                         <input type="date" 
                                id="expiry_date" 
@@ -1793,9 +1889,6 @@ if (isset($_GET['edit'])) {
             // Set announcement type
             <?php $ann_type = $edit_announcement['announcement_type'] ?? 'general'; ?>
             document.getElementById('type_<?php echo $ann_type; ?>').checked = true;
-            
-            // Set priority
-            document.getElementById('priority_<?php echo $edit_announcement['priority']; ?>').checked = true;
             
             // Set event details
             document.getElementById('event_date').value = '<?php echo $edit_announcement['event_date']; ?>';

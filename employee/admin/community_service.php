@@ -13,23 +13,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $response = ['success' => false, 'message' => 'Invalid request'];
     
     if (isset($_POST['action'])) {
-        $volunteer_id = isset($_POST['volunteer_id']) ? intval($_POST['volunteer_id']) : 0;
-        
-        if ($volunteer_id > 0) {
-            if ($_POST['action'] === 'approve') {
-                $sql = "UPDATE volunteer_registrations SET status = 'approved' WHERE id = ?";
+        switch ($_POST['action']) {
+            case 'create_event':
+                $title = mysqli_real_escape_string($connection, $_POST['title']);
+                $description = mysqli_real_escape_string($connection, $_POST['description']);
+                $start_date = mysqli_real_escape_string($connection, $_POST['event_start_date']);
+                $end_date = mysqli_real_escape_string($connection, $_POST['event_end_date']);
+                $event_time = mysqli_real_escape_string($connection, $_POST['event_time']);
+                $location = mysqli_real_escape_string($connection, $_POST['location']);
+                $max_volunteers = intval($_POST['max_volunteers']);
+                
+                $sql = "INSERT INTO events (title, description, event_start_date, event_end_date, 
+                        event_time, location, max_volunteers, status, created_by) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, 'upcoming', ?)";
+                
                 $stmt = mysqli_prepare($connection, $sql);
-                mysqli_stmt_bind_param($stmt, "i", $volunteer_id);
+                mysqli_stmt_bind_param($stmt, "ssssssii", 
+                    $title, $description, $start_date, $end_date, 
+                    $event_time, $location, $max_volunteers, $_SESSION['user_id']
+                );
                 
                 if (mysqli_stmt_execute($stmt)) {
-                    $response = ['success' => true, 'message' => 'Volunteer approved successfully'];
+                    $response = ['success' => true, 'message' => 'Event created successfully'];
                 } else {
-                    $response = ['success' => false, 'message' => 'Failed to approve volunteer'];
+                    $response = ['success' => false, 'message' => 'Failed to create event: ' . mysqli_error($connection)];
                 }
-            } 
-            else if ($_POST['action'] === 'reject') {
+                break;
+
+            case 'update_event':
+                $id = intval($_POST['event_id']);
+                $title = mysqli_real_escape_string($connection, $_POST['title']);
+                $description = mysqli_real_escape_string($connection, $_POST['description']);
+                $start_date = mysqli_real_escape_string($connection, $_POST['event_start_date']);
+                $end_date = mysqli_real_escape_string($connection, $_POST['event_end_date']);
+                $event_time = mysqli_real_escape_string($connection, $_POST['event_time']);
+                $location = mysqli_real_escape_string($connection, $_POST['location']);
+                $max_volunteers = intval($_POST['max_volunteers']);
+                $status = mysqli_real_escape_string($connection, $_POST['status']);
+                
+                $sql = "UPDATE events SET title=?, description=?, event_start_date=?, 
+                        event_end_date=?, event_time=?, location=?, max_volunteers=?, 
+                        status=?, updated_at=NOW() WHERE id=?";
+                
+                $stmt = mysqli_prepare($connection, $sql);
+                mysqli_stmt_bind_param($stmt, "ssssssssi", 
+                    $title, $description, $start_date, $end_date, 
+                    $event_time, $location, $max_volunteers, $status, $id
+                );
+                
+                if (mysqli_stmt_execute($stmt)) {
+                    $response = ['success' => true, 'message' => 'Event updated successfully'];
+                } else {
+                    $response = ['success' => false, 'message' => 'Failed to update event: ' . mysqli_error($connection)];
+                }
+                break;
+
+            case 'approve':
+                $volunteer_id = isset($_POST['volunteer_id']) ? intval($_POST['volunteer_id']) : 0;
+                
+                if ($volunteer_id > 0) {
+                    $sql = "UPDATE volunteer_registrations SET status = 'approved' WHERE id = ?";
+                    $stmt = mysqli_prepare($connection, $sql);
+                    mysqli_stmt_bind_param($stmt, "i", $volunteer_id);
+                    
+                    if (mysqli_stmt_execute($stmt)) {
+                        $response = ['success' => true, 'message' => 'Volunteer approved successfully'];
+                    } else {
+                        $response = ['success' => false, 'message' => 'Failed to approve volunteer'];
+                    }
+                }
+                break;
+            
+            case 'reject':
+                $volunteer_id = isset($_POST['volunteer_id']) ? intval($_POST['volunteer_id']) : 0;
                 $reason = isset($_POST['rejection_reason']) ? trim($_POST['rejection_reason']) : '';
-                if (!empty($reason)) {
+                if ($volunteer_id > 0 && !empty($reason)) {
                     $sql = "UPDATE volunteer_registrations SET status = 'rejected', rejection_reason = ? WHERE id = ?";
                     $stmt = mysqli_prepare($connection, $sql);
                     mysqli_stmt_bind_param($stmt, "si", $reason, $volunteer_id);
@@ -39,10 +97,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     } else {
                         $response = ['success' => false, 'message' => 'Failed to reject volunteer'];
                     }
-                } else {
+                } else if (empty($reason)) {
                     $response = ['success' => false, 'message' => 'Rejection reason is required'];
                 }
-            }
+                break;
         }
     }
     
@@ -92,18 +150,36 @@ $volunteer_stats_query = "SELECT
 $volunteer_result = mysqli_query($connection, $volunteer_stats_query);
 $volunteer_stats = mysqli_fetch_assoc($volunteer_result);
 
-// Get upcoming events with volunteer count - Modified to only count APPROVED volunteers
+// Get upcoming events with pagination - Modified to exclude past events
+$items_per_page = 6;
+$page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
+$offset = ($page - 1) * $items_per_page;
+
+// Get total number of events for pagination - Only upcoming and ongoing events
+$total_query = "SELECT COUNT(*) as total FROM events 
+                WHERE status IN ('upcoming', 'ongoing') 
+                AND event_start_date >= CURDATE()";
+$total_result = mysqli_query($connection, $total_query);
+$total_events = mysqli_fetch_assoc($total_result)['total'];
+$total_pages = ceil($total_events / $items_per_page);
+
+// Modified events query with LIMIT and OFFSET - Only upcoming and ongoing events
 $events_query = "SELECT 
     e.*,
     COUNT(DISTINCT CASE WHEN vr.status = 'approved' THEN vr.id ELSE NULL END) as volunteer_count,
     SUM(CASE WHEN vr.status = 'pending' THEN 1 ELSE 0 END) as pending_count
 FROM events e
 LEFT JOIN volunteer_registrations vr ON e.id = vr.event_id
-WHERE e.status IN ('upcoming', 'ongoing')
+WHERE e.status IN ('upcoming', 'ongoing') 
+AND e.event_start_date >= CURDATE()
 GROUP BY e.id
-ORDER BY e.event_start_date ASC";
+ORDER BY e.event_start_date ASC
+LIMIT ? OFFSET ?";
 
-$events_result = mysqli_query($connection, $events_query);
+$stmt = mysqli_prepare($connection, $events_query);
+mysqli_stmt_bind_param($stmt, "ii", $items_per_page, $offset);
+mysqli_stmt_execute($stmt);
+$events_result = mysqli_stmt_get_result($stmt);
 
 // Handle AJAX request for volunteer applications
 if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
@@ -1223,6 +1299,48 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
         min-width: 20px;
         text-align: center;
     }
+
+    /* Pagination Styles */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin: 2rem 0;
+}
+
+.page-numbers {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.page-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    background: #fff;
+    color: #333;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+.page-number:hover {
+    background: #e9ecef;
+    color: #333;
+}
+
+.page-number.active {
+    background: #3498db;
+    color: #fff;
+}
+
+.pagination .btn {
+    padding: 0.5rem 1rem;
+}
     </style>
 </head>
 <body>
@@ -1292,25 +1410,24 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                     Disaster Management
                 </a>
             </div>
-            <!-- Finance -->
-            <div class="nav-section">
-                <div class="nav-section-title">Finance</div>
-                <a href="budgets.php" class="nav-item">
-                    <i class="fas fa-wallet"></i>
-                    Budgets
-                </a>
-                <a href="expenses.php" class="nav-item">
-                    <i class="fas fa-file-invoice-dollar"></i>
-                    Expenses
-                </a>
-            </div>
+            	<div class="nav-section">
+				<div class="nav-section-title">Finance</div>
+				<a href="budgets.php" class="nav-item">
+					<i class="fas fa-wallet"></i>
+					Budgets
+				</a>
+				<a href="expenses.php" class="nav-item">
+					<i class="fas fa-file-invoice-dollar"></i>
+					Expenses
+				</a>
+			</div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
-            <a href="account_management.php" class="nav-item">
-					<i class="fas fa-user-cog"></i>
-					Account Management
-				</a>
+             <a href="account_management.php" class="nav-item">
+                       <i class="fas fa-user-cog"></i>
+                Account Management
+                </a>
                 <a href="settings.php" class="nav-item">
                     <i class="fas fa-cog"></i>
                     Settings
@@ -1446,16 +1563,14 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                         <div class="event-date">
                             <i class="fas fa-calendar"></i>
                             <?php echo $event_date->format('F j, Y'); ?>
-                            <?php if ($is_past): ?>
-                                <span style="background: rgba(255,255,255,0.3); padding: 2px 8px; border-radius: 12px; font-size: 0.75rem;">Past Event</span>
-                            <?php endif; ?>
                         </div>
                     </div>
                     <div class="event-body">
                         <div class="event-info">
                             <?php if (!empty($event['event_time'])): ?>
+                                <?php $formatted_time = date('g:i A', strtotime($event['event_time'])); ?>
                                 <div class="event-info-item">
-                                    <i class="far fa-clock"></i> <?php echo htmlspecialchars($event['event_time']); ?>
+                                    <i class="far fa-clock"></i> <?php echo htmlspecialchars($formatted_time); ?>
                                 </div>
                             <?php endif; ?>
                             <?php if (!empty($event['location'])): ?>
@@ -1497,6 +1612,32 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                 </div>
             <?php endif; ?>
             </div>
+
+            <!-- Pagination -->
+            <?php if ($total_pages > 1): ?>
+            <div class="pagination">
+                <?php if ($page > 1): ?>
+                    <a href="?page=<?php echo ($page - 1); ?>" class="btn btn-primary">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </a>
+                <?php endif; ?>
+                
+                <div class="page-numbers">
+                    <?php for ($i = 1; $i <= $total_pages; $i++): ?>
+                        <a href="?page=<?php echo $i; ?>" 
+                           class="page-number <?php echo $i === $page ? 'active' : ''; ?>">
+                            <?php echo $i; ?>
+                        </a>
+                    <?php endfor; ?>
+                </div>
+
+                <?php if ($page < $total_pages): ?>
+                    <a href="?page=<?php echo ($page + 1); ?>" class="btn btn-primary">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </a>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -1996,6 +2137,53 @@ function showEventVolunteers(eventId) {
                 </div>`;
         });
     }
+
+    // Add this event listener after other scripts
+    document.getElementById('eventForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch(window.location.pathname, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                closeEventModal();
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Success',
+                    text: data.message,
+                    timer: 2000,
+                    showConfirmButton: false
+                }).then(() => {
+                    // Reload the page to show new event
+                    window.location.reload();
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message || 'Something went wrong',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Something went wrong. Please try again.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        });
+    });
 	</script>
 </body>
 </html>

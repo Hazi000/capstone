@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Sep 26, 2025 at 02:11 PM
+-- Generation Time: Oct 01, 2025 at 05:13 PM
 -- Server version: 10.4.32-MariaDB
 -- PHP Version: 8.2.12
 
@@ -100,7 +100,9 @@ CREATE TABLE `budgets` (
 --
 
 INSERT INTO `budgets` (`id`, `item`, `description`, `amount`, `budget_date`, `created_at`, `updated_at`, `status`) VALUES
-(1, 'dajsbd', NULL, 7999.00, '2025-09-10', '2025-09-10 14:41:50', '2025-09-10 14:41:50', 'active');
+(1, 'dajsbd', NULL, 7999.00, '2025-09-10', '2025-09-10 14:41:50', '2025-09-10 14:41:50', 'active'),
+(2, 'uguguy', NULL, 20000.00, '2025-09-26', '2025-09-26 12:50:58', '2025-09-26 12:50:58', 'active'),
+(3, 'Flood control', NULL, 1111.00, '2025-09-26', '2025-09-26 12:54:51', '2025-09-26 12:54:51', 'active');
 
 -- --------------------------------------------------------
 
@@ -147,7 +149,8 @@ INSERT INTO `certificates` (`id`, `resident_name`, `age`, `purpose`, `or_number`
 (2, 'jeramel', 22, 'non', '1111', '200', '2025-07-02 13:53:57', 2),
 (3, 'jeramel', 22, 'non', '1111', '200', '2025-07-02 15:54:47', 6),
 (4, 'dwdjan', 44, 'ghgh', '111', '9', '2025-07-02 19:21:36', 2),
-(5, 'alhazier r. nasa', 22, 'da', '36217', '11', '2025-08-17 16:17:22', 2);
+(5, 'alhazier r. nasa', 22, 'da', '36217', '11', '2025-08-17 16:17:22', 2),
+(6, 'jeramel pangilinan', 18, 'Need for license to operate for DTI', '123', '10.00', '2025-09-26 20:21:39', 6);
 
 -- --------------------------------------------------------
 
@@ -178,7 +181,8 @@ CREATE TABLE `certificate_requests` (
 
 INSERT INTO `certificate_requests` (`id`, `resident_id`, `certificate_type`, `purpose`, `additional_info`, `status`, `created_at`, `processed_date`, `processed_by`, `rejection_reason`, `claim_date`, `or_number`, `amount_paid`, `updated_at`) VALUES
 (1, 16, 'Barangay Clearance', 'sa', 'sasas', 'claimed', '2025-08-03 09:36:39', '2025-08-03 09:41:56', 2, NULL, '2025-08-03 10:02:16', '1111', NULL, '2025-08-03 10:02:16'),
-(2, 16, 'Barangay Clearance', 'da', 'bajsbd', 'approved', '2025-08-17 08:00:20', '2025-08-17 08:11:11', 2, NULL, NULL, NULL, NULL, '2025-08-17 08:11:11');
+(2, 16, 'Barangay Clearance', 'da', 'bajsbd', 'approved', '2025-08-17 08:00:20', '2025-08-17 08:11:11', 2, NULL, NULL, NULL, NULL, '2025-08-17 08:11:11'),
+(3, 18, 'Barangay Business Permit', 'Need for license to operate for DTI', 'N/A', 'approved', '2025-09-26 12:20:36', '2025-09-26 12:21:16', 6, NULL, NULL, NULL, NULL, '2025-09-26 12:21:16');
 
 -- --------------------------------------------------------
 
@@ -204,7 +208,8 @@ CREATE TABLE `certificate_request_logs` (
 INSERT INTO `certificate_request_logs` (`id`, `request_id`, `action`, `performed_by`, `old_status`, `new_status`, `remarks`, `created_at`) VALUES
 (1, 1, 'approved', 2, 'pending', 'approved', NULL, '2025-08-03 09:41:56'),
 (2, 1, 'claimed', 2, 'approved', 'claimed', NULL, '2025-08-03 10:02:16'),
-(3, 2, 'approved', 2, 'pending', 'approved', NULL, '2025-08-17 08:11:11');
+(3, 2, 'approved', 2, 'pending', 'approved', NULL, '2025-08-17 08:11:11'),
+(4, 3, 'approved', 6, 'pending', 'approved', NULL, '2025-09-26 12:21:16');
 
 -- --------------------------------------------------------
 
@@ -335,7 +340,8 @@ INSERT INTO `complaints` (`id`, `nature_of_complaint`, `description`, `priority`
 (12, 'dsda', 'njadsnj', 'medium', 'resolved', NULL, '', '', '2025-06-26 08:06:08', '2025-07-02 13:46:34', NULL, NULL, NULL, NULL, NULL),
 (13, 'gossip', 'whidz accused of being gossiper in the barangay', 'low', 'closed', NULL, '', '', '2025-07-15 07:09:16', '2025-07-20 08:53:16', 9, '', '', 'bhh', '2000-08-08'),
 (14, 'dsad', 'bufdsgfs', 'medium', 'in-progress', NULL, 'fshfsa R. nassa', '09493742948', '2025-09-25 12:13:29', '2025-09-25 12:13:47', 16, '', '', NULL, NULL),
-(15, 'Gossip', 'Spreading of inaccurate info', 'medium', 'in-progress', NULL, 'Jeraml Q. Asid', '09493742948', '2025-09-25 12:21:40', '2025-09-25 12:23:26', NULL, 'Cherry F. Gabionza', '09493742949', NULL, NULL);
+(15, 'Gossip', 'Spreading of inaccurate info', 'medium', 'in-progress', NULL, 'Jeraml Q. Asid', '09493742948', '2025-09-25 12:21:40', '2025-09-25 12:23:26', NULL, 'Cherry F. Gabionza', '09493742949', NULL, NULL),
+(16, 'sdssa', 'shds', 'medium', 'in-progress', 18, '', '', '2025-09-26 12:26:23', '2025-09-26 12:26:31', 15, '', '', NULL, NULL);
 
 -- --------------------------------------------------------
 
@@ -390,7 +396,14 @@ INSERT INTO `events` (`id`, `title`, `description`, `event_start_date`, `event_e
 (1, '1da', 'dadad', '2025-09-25', '2025-09-30', '14:33:00', 'dadad', 1, 12, 6, 'upcoming', '2025-09-26 08:20:13', '2025-09-26 08:20:13'),
 (2, 'dasda', 'addasdasd', '2025-09-27', '2025-09-30', '16:28:00', 'dsadasd', 1, 1, 6, 'upcoming', '2025-09-26 08:26:53', '2025-09-26 08:26:53'),
 (3, 'dsada', 'dsadasd', '2025-10-05', '2025-10-22', '16:32:00', 'sdadas', 1, 21, 6, 'upcoming', '2025-09-26 08:30:09', '2025-09-26 08:30:09'),
-(4, 'dassd', 'adadad', '2025-10-07', '2025-10-23', '16:34:00', 'dadad', 1, 1, 6, 'upcoming', '2025-09-26 08:32:10', '2025-09-26 08:32:10');
+(4, 'dassd', 'adadad', '2025-10-07', '2025-10-23', '16:34:00', 'dadad', 1, 1, 6, 'upcoming', '2025-09-26 08:32:10', '2025-09-26 08:32:10'),
+(5, 'dsada', 'dasdada', '2025-09-30', '2025-10-01', '22:42:00', 'dsada', 0, 21, 6, 'upcoming', '2025-09-30 14:41:42', '2025-09-30 14:41:42'),
+(6, 'dasa', 'ddadad', '2025-10-10', '2025-10-22', '22:44:00', '22', 0, 22, 6, 'upcoming', '2025-09-30 14:42:13', '2025-09-30 14:42:13'),
+(7, 'dadad', 'dadad', '2025-09-30', '2025-10-06', '22:45:00', 'dsad', 0, 1, 6, 'upcoming', '2025-09-30 14:44:07', '2025-09-30 14:44:07'),
+(8, 'dasda', 'dadada', '2025-10-01', '2025-10-03', '23:05:00', 'dddd', 0, 1, 6, 'upcoming', '2025-09-30 15:02:09', '2025-09-30 15:02:09'),
+(9, 'hiii', 'djashdj', '2025-10-08', '2025-10-08', '23:10:00', 'dadasda', 0, 21, 6, 'upcoming', '2025-09-30 15:05:14', '2025-09-30 15:05:14'),
+(10, 'dada', 'dadada', '2025-10-09', '2025-10-09', '23:13:00', 'dada', 0, 1, 9, 'upcoming', '2025-10-01 15:11:37', '2025-10-01 15:11:37'),
+(11, 'ddada', 'dadada', '2025-10-31', '2025-10-31', '23:16:00', '111', 0, 21, 2, 'upcoming', '2025-10-01 15:13:24', '2025-10-01 15:13:24');
 
 --
 -- Triggers `events`
@@ -427,7 +440,9 @@ CREATE TABLE `expenses` (
 --
 
 INSERT INTO `expenses` (`id`, `description`, `amount`, `budget_id`, `created_by`, `category`, `created_at`, `updated_at`) VALUES
-(1, 'dsad', 3131.00, 1, 7, NULL, '2025-09-10 08:42:00', '2025-09-10 14:42:00');
+(1, 'dsad', 3131.00, 1, 7, NULL, '2025-09-10 08:42:00', '2025-09-10 14:42:00'),
+(2, 'dwaesdwq', 500.00, 1, 2, NULL, '2025-09-26 06:37:32', '2025-09-26 12:37:32'),
+(4, 'tambak', 1000.00, 2, 2, NULL, '2025-09-26 06:57:03', '2025-09-26 12:57:03');
 
 -- --------------------------------------------------------
 
@@ -593,7 +608,7 @@ CREATE TABLE `resident_accounts` (
 INSERT INTO `resident_accounts` (`id`, `resident_id`, `username`, `email`, `password`, `is_verified`, `verification_token`, `last_login`, `login_attempts`, `account_locked`, `created_at`, `updated_at`) VALUES
 (4, 9, 'cherry', 'cherry@gmail.com', '$2y$10$NxRSNHpYSnvi/MR4QzgDJOC5OMjHNkAzTA4s0JhknekWTzBVnLTBq', 1, '5f873b2514cfdb3c6f197bf1ebbe66aa76fc8b581b88e644997408d0cb1539ad', '2025-07-03 08:50:40', 0, 0, '2025-07-02 08:38:14', '2025-07-03 00:50:40'),
 (5, 15, 'marcussssss', 'leyciameay@gmail.com', '$2y$10$/Y3xkvHFcHYfad/gw68S8uOIblHs6tBGoMgDhwJEvptq4JncVbzZy', 1, 'dcc8176e9d30534bbd7bc83487335085d8d8abb42dcd64e30c325b8c347a019b', NULL, 0, 0, '2025-07-25 07:39:53', '2025-07-25 07:39:53'),
-(8, 18, 'donny', 'donnypogiasid@gmail.com', '$2y$10$0HSpaATX2RYUle7AmkH80.e4H0gTHx4V1PyjPSSj8lSM5ywt.ZzSa', 1, '586d5c8a2f5e54f91e8cd2d3a4bfbc39e36240912bb0a502eacebced447485b7', '2025-09-26 20:10:21', 0, 0, '2025-09-26 12:10:16', '2025-09-26 12:10:21');
+(8, 18, 'donny', 'donnypogiasid@gmail.com', '$2y$10$0HSpaATX2RYUle7AmkH80.e4H0gTHx4V1PyjPSSj8lSM5ywt.ZzSa', 1, '586d5c8a2f5e54f91e8cd2d3a4bfbc39e36240912bb0a502eacebced447485b7', '2025-09-30 22:45:29', 0, 0, '2025-09-26 12:10:16', '2025-09-30 14:45:29');
 
 -- --------------------------------------------------------
 
@@ -618,9 +633,10 @@ CREATE TABLE `users` (
 --
 
 INSERT INTO `users` (`id`, `full_name`, `email`, `password`, `role`, `status`, `created_at`, `last_login`, `updated_at`) VALUES
-(2, 'super admin', 'Jeramel@gmail.com', '$2y$10$AGXRV5a3BeV9/RCshIzJ5Oq36WLEnUvNpRORl7gnj/CT7jMIfRVIe', 'super_admin', 'active', '2025-06-25 04:51:40', '2025-09-26 11:48:21', '2025-09-26 11:48:21'),
-(6, 'Jeramel Q. Asid', 'jeramelasid@gmail.com', '$2y$10$ARXpPuEH2nw2esecnon44ejZ0ytN5kRiPXiqZ1pe5FcnhXbZxtMCC', 'secretary', 'active', '2025-07-02 05:59:25', '2025-09-26 11:53:25', '2025-09-26 11:53:25'),
-(7, 'Whidzmar Taraji', 'whidzmartaraji03@gmail.com', '$2y$10$OF4i.8P4AOmKLFFVRTg07.TCraMPniYGYHpyvY29ZI7DYsp0SDpRe', 'captain', 'active', '2025-07-02 06:00:46', '2025-09-26 11:44:07', '2025-09-26 11:44:07');
+(2, 'super admin', 'Jeramel@gmail.com', '$2y$10$AGXRV5a3BeV9/RCshIzJ5Oq36WLEnUvNpRORl7gnj/CT7jMIfRVIe', 'super_admin', 'active', '2025-06-25 04:51:40', '2025-10-01 15:12:56', '2025-10-01 15:12:56'),
+(6, 'Jeramel Q. Asid', 'jeramelasid@gmail.com', '$2y$10$ARXpPuEH2nw2esecnon44ejZ0ytN5kRiPXiqZ1pe5FcnhXbZxtMCC', 'secretary', 'active', '2025-07-02 05:59:25', '2025-09-30 14:38:36', '2025-09-30 14:38:36'),
+(7, 'Whidzmar Taraji', 'whidzmartaraji03@gmail.com', '$2y$10$OF4i.8P4AOmKLFFVRTg07.TCraMPniYGYHpyvY29ZI7DYsp0SDpRe', 'treasurer', 'active', '2025-07-02 06:00:46', '2025-10-01 15:10:44', '2025-10-01 15:10:44'),
+(9, 'Donny Asid', 'jerpub20@gmail.com', '$2y$10$LeaJyMbGOKL6W2ZzcZv96O0uX1vLcfOs9CVr0BXvkQ.LtkOadJ9Hi', 'captain', 'active', '2025-09-26 14:06:31', '2025-10-01 15:11:16', '2025-10-01 15:11:16');
 
 -- --------------------------------------------------------
 
@@ -639,6 +655,18 @@ CREATE TABLE `volunteer_registrations` (
   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
   `hours_served` decimal(5,2) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Dumping data for table `volunteer_registrations`
+--
+
+INSERT INTO `volunteer_registrations` (`id`, `event_id`, `request_id`, `resident_id`, `status`, `rejection_reason`, `registration_date`, `updated_at`, `hours_served`) VALUES
+(5, 2, 2, 18, 'approved', NULL, '2025-09-26 12:17:33', '2025-09-26 12:19:02', NULL),
+(6, 3, 3, 18, 'approved', NULL, '2025-09-30 14:45:44', '2025-09-30 14:47:32', NULL),
+(7, 4, 4, 18, 'rejected', 'jbjfdbs', '2025-09-30 14:45:58', '2025-09-30 14:47:28', NULL),
+(14, 8, 5, 18, 'approved', NULL, '2025-09-30 16:05:49', '2025-09-30 16:05:59', NULL),
+(15, 9, 6, 18, 'approved', NULL, '2025-09-30 16:06:10', '2025-09-30 16:09:20', NULL),
+(16, 6, 7, 18, 'rejected', '7t', '2025-09-30 16:09:01', '2025-09-30 16:09:15', NULL);
 
 -- --------------------------------------------------------
 
@@ -666,7 +694,10 @@ INSERT INTO `volunteer_requests` (`id`, `event_id`, `role`, `description`, `requ
 (1, 1, NULL, NULL, 12, 0, 'open', '2025-09-26 08:52:38', '2025-09-26 08:52:38'),
 (2, 2, NULL, NULL, 1, 0, 'open', '2025-09-26 08:52:38', '2025-09-26 08:52:38'),
 (3, 3, NULL, NULL, 21, 0, 'open', '2025-09-26 08:52:38', '2025-09-26 08:52:38'),
-(4, 4, NULL, NULL, 1, 0, 'open', '2025-09-26 08:52:38', '2025-09-26 08:52:38');
+(4, 4, NULL, NULL, 1, 0, 'open', '2025-09-26 08:52:38', '2025-09-26 08:52:38'),
+(5, 8, NULL, NULL, 1, 0, '', '2025-09-30 16:05:49', '2025-09-30 16:05:49'),
+(6, 9, NULL, NULL, 1, 0, '', '2025-09-30 16:06:10', '2025-09-30 16:06:10'),
+(7, 6, NULL, NULL, 1, 0, '', '2025-09-30 16:09:01', '2025-09-30 16:09:01');
 
 -- --------------------------------------------------------
 
@@ -883,7 +914,7 @@ ALTER TABLE `appointments`
 -- AUTO_INCREMENT for table `budgets`
 --
 ALTER TABLE `budgets`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `calendar_events`
@@ -895,19 +926,19 @@ ALTER TABLE `calendar_events`
 -- AUTO_INCREMENT for table `certificates`
 --
 ALTER TABLE `certificates`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT for table `certificate_requests`
 --
 ALTER TABLE `certificate_requests`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
 
 --
 -- AUTO_INCREMENT for table `certificate_request_logs`
 --
 ALTER TABLE `certificate_request_logs`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `certificate_types`
@@ -925,7 +956,7 @@ ALTER TABLE `community_volunteers`
 -- AUTO_INCREMENT for table `complaints`
 --
 ALTER TABLE `complaints`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=16;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT for table `email_verifications`
@@ -943,7 +974,7 @@ ALTER TABLE `events`
 -- AUTO_INCREMENT for table `expenses`
 --
 ALTER TABLE `expenses`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
 
 --
 -- AUTO_INCREMENT for table `families`
@@ -985,13 +1016,13 @@ ALTER TABLE `resident_accounts`
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=9;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT for table `volunteer_registrations`
 --
 ALTER TABLE `volunteer_registrations`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=17;
 
 --
 -- AUTO_INCREMENT for table `volunteer_requests`
