@@ -2,6 +2,58 @@
 session_start();
 require_once '../../config.php';
 
+// Set PHP timezone to Philippine time and set MySQL session timezone
+date_default_timezone_set('Asia/Manila');
+@mysqli_query($connection, "SET time_zone = '+08:00'");
+
+// --- NEW: ensure volunteer_proofs table exists (stores uploaded proof images) ---
+$create_proofs_table_sql = "
+CREATE TABLE IF NOT EXISTS volunteer_proofs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    registration_id INT NOT NULL,
+    file_path VARCHAR(255) NOT NULL,
+    file_name VARCHAR(255) DEFAULT NULL,
+    file_type VARCHAR(100) DEFAULT NULL,
+    file_size INT DEFAULT NULL,
+    uploaded_by INT DEFAULT NULL,
+    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX (registration_id),
+    CONSTRAINT fk_vp_registration FOREIGN KEY (registration_id) 
+        REFERENCES volunteer_registrations(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+";
+@mysqli_query($connection, $create_proofs_table_sql); // suppress errors here; adjust error handling as needed
+
+// --- NEW: ensure volunteer_proofs has a status column (pending/approved/rejected) ---
+$vp_cols_res = @mysqli_query($connection, "DESCRIBE `volunteer_proofs`");
+$vp_cols = [];
+if ($vp_cols_res) {
+    while ($c = mysqli_fetch_assoc($vp_cols_res)) {
+        $vp_cols[] = $c['Field'];
+    }
+    mysqli_free_result($vp_cols_res);
+}
+if (!in_array('status', $vp_cols)) {
+    @mysqli_query($connection, "ALTER TABLE `volunteer_proofs` ADD COLUMN `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'");
+}
+
+// --- NEW: ensure volunteer_registrations.status has required ENUM values and default ---
+// This avoids blank/NULL status when approvals happen.
+$vr_cols_res = @mysqli_query($connection, "DESCRIBE `volunteer_registrations`");
+$vr_cols = [];
+if ($vr_cols_res) {
+    while ($c = mysqli_fetch_assoc($vr_cols_res)) {
+        $vr_cols[] = $c['Field'];
+    }
+    mysqli_free_result($vr_cols_res);
+}
+if (!in_array('status', $vr_cols)) {
+    @mysqli_query($connection, "ALTER TABLE `volunteer_registrations` ADD COLUMN `status` ENUM('pending','approved','rejected','attended') NOT NULL DEFAULT 'pending'");
+} else {
+    // Modify column to ensure it contains needed values and non-null default (no harm if already correct)
+    @mysqli_query($connection, "ALTER TABLE `volunteer_registrations` MODIFY COLUMN `status` ENUM('pending','approved','rejected','attended') NOT NULL DEFAULT 'pending'");
+}
+
 // Check if user is logged in and is a secretary
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'secretary') {
     header("Location: ../index.php");
@@ -10,6 +62,10 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'secretary') {
 
 // Handle POST actions for approve/reject
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // Start output buffering to capture any accidental output (warnings, notices, whitespace)
+    // so we can ensure the response is valid JSON for AJAX requests.
+    ob_start();
+
     $response = ['success' => false, 'message' => 'Invalid request'];
     
     if (isset($_POST['action'])) {
@@ -77,10 +133,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_bind_param($stmt, "i", $volunteer_id);
                     
                     if (mysqli_stmt_execute($stmt)) {
+                        // Delete any uploaded proofs for this registration (file + DB row)
+                        $sel = "SELECT id, file_path FROM volunteer_proofs WHERE registration_id = ?";
+                        $sel_st = @mysqli_prepare($connection, $sel);
+                        if ($sel_st) {
+                            mysqli_stmt_bind_param($sel_st, "i", $volunteer_id);
+                            mysqli_stmt_execute($sel_st);
+                            $res = mysqli_stmt_get_result($sel_st);
+                            while ($prow = mysqli_fetch_assoc($res)) {
+                                $pf_id = intval($prow['id']);
+                                $fp = $prow['file_path'] ?? '';
+                                $full = __DIR__ . '/../../' . ltrim($fp, '/');
+                                if ($fp && file_exists($full)) {
+                                    @unlink($full);
+                                }
+                                // delete db row
+                                $del = "DELETE FROM volunteer_proofs WHERE id = ?";
+                                $del_st = @mysqli_prepare($connection, $del);
+                                if ($del_st) {
+                                    mysqli_stmt_bind_param($del_st, "i", $pf_id);
+                                    @mysqli_stmt_execute($del_st);
+                                    @mysqli_stmt_close($del_st);
+                                } else {
+                                    @mysqli_query($connection, "DELETE FROM volunteer_proofs WHERE id = ".intval($pf_id));
+                                }
+                            }
+                            @mysqli_stmt_close($sel_st);
+                        } else {
+                            // fallback: best-effort delete via single query (files cannot be deleted without select)
+                            @mysqli_query($connection, "DELETE FROM volunteer_proofs WHERE registration_id = ".intval($volunteer_id));
+                        }
+
                         $response = ['success' => true, 'message' => 'Volunteer approved successfully'];
                     } else {
                         $response = ['success' => false, 'message' => 'Failed to approve volunteer'];
                     }
+                }
+                break;
+
+            // NEW: approve a proof record and ensure the corresponding registration becomes 'approved'
+            case 'approve_proof':
+                $proof_id = isset($_POST['proof_id']) ? intval($_POST['proof_id']) : 0;
+                if ($proof_id > 0) {
+                    // fetch registration_id and file_path for this proof
+                    $q = "SELECT registration_id, file_path FROM volunteer_proofs WHERE id = ? LIMIT 1";
+                    $qstmt = mysqli_prepare($connection, $q);
+                    if ($qstmt) {
+                        mysqli_stmt_bind_param($qstmt, "i", $proof_id);
+                        mysqli_stmt_execute($qstmt);
+                        $qres = mysqli_stmt_get_result($qstmt);
+                        $prow = $qres ? mysqli_fetch_assoc($qres) : null;
+                        mysqli_stmt_close($qstmt);
+                        $reg_id = intval($prow['registration_id'] ?? 0);
+                        $file_path = $prow['file_path'] ?? '';
+                    } else {
+                        $reg_id = 0;
+                        $file_path = '';
+                    }
+                    
+                    // delete file and proof row
+                    $deleted_ok = false;
+                    if ($file_path) {
+                        $full = __DIR__ . '/../../' . ltrim($file_path, '/');
+                        if (file_exists($full)) { @unlink($full); }
+                    }
+                    $del = "DELETE FROM volunteer_proofs WHERE id = ?";
+                    $delst = @mysqli_prepare($connection, $del);
+                    if ($delst) {
+                        mysqli_stmt_bind_param($delst, "i", $proof_id);
+                        $deleted_ok = mysqli_stmt_execute($delst);
+                        mysqli_stmt_close($delst);
+                    } else {
+                        $deleted_ok = @mysqli_query($connection, "DELETE FROM volunteer_proofs WHERE id = ".intval($proof_id));
+                    }
+                    
+                    // ensure registration is approved as well (if we found it)
+                    $ok2 = true;
+                    if ($reg_id > 0) {
+                        $ur = "UPDATE volunteer_registrations SET status = 'approved' WHERE id = ?";
+                        $urst = mysqli_prepare($connection, $ur);
+                        if ($urst) {
+                            mysqli_stmt_bind_param($urst, "i", $reg_id);
+                            $ok2 = mysqli_stmt_execute($urst);
+                            mysqli_stmt_close($urst);
+                        } else {
+                            $ok2 = @mysqli_query($connection, "UPDATE volunteer_registrations SET status = 'approved' WHERE id = ".intval($reg_id));
+                        }
+                    }
+                    
+                    if ($deleted_ok && $ok2) {
+                        $response = ['success' => true, 'message' => 'Proof approved and registration updated (proof removed)'];
+                    } else {
+                        $response = ['success' => false, 'message' => 'Failed to approve proof or update registration'];
+                    }
+                } else {
+                    $response = ['success' => false, 'message' => 'Invalid proof id'];
                 }
                 break;
             
@@ -93,6 +240,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     mysqli_stmt_bind_param($stmt, "si", $reason, $volunteer_id);
                     
                     if (mysqli_stmt_execute($stmt)) {
+                        // Delete proofs for this registration (file + DB row)
+                        $sel = "SELECT id, file_path FROM volunteer_proofs WHERE registration_id = ?";
+                        $sel_st = @mysqli_prepare($connection, $sel);
+                        if ($sel_st) {
+                            mysqli_stmt_bind_param($sel_st, "i", $volunteer_id);
+                            mysqli_stmt_execute($sel_st);
+                            $res = mysqli_stmt_get_result($sel_st);
+                            while ($prow = mysqli_fetch_assoc($res)) {
+                                $pf_id = intval($prow['id']);
+                                $fp = $prow['file_path'] ?? '';
+                                $full = __DIR__ . '/../../' . ltrim($fp, '/');
+                                if ($fp && file_exists($full)) {
+                                    @unlink($full);
+                                }
+                                $del = "DELETE FROM volunteer_proofs WHERE id = ?";
+                                $del_st = @mysqli_prepare($connection, $del);
+                                if ($del_st) {
+                                    mysqli_stmt_bind_param($del_st, "i", $pf_id);
+                                    @mysqli_stmt_execute($del_st);
+                                    @mysqli_stmt_close($del_st);
+                                } else {
+                                    @mysqli_query($connection, "DELETE FROM volunteer_proofs WHERE id = ".intval($pf_id));
+                                }
+                            }
+                            @mysqli_stmt_close($sel_st);
+                        } else {
+                            @mysqli_query($connection, "DELETE FROM volunteer_proofs WHERE registration_id = ".intval($volunteer_id));
+                        }
+
                         $response = ['success' => true, 'message' => 'Volunteer rejected successfully'];
                     } else {
                         $response = ['success' => false, 'message' => 'Failed to reject volunteer'];
@@ -101,34 +277,159 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $response = ['success' => false, 'message' => 'Rejection reason is required'];
                 }
                 break;
+
+            case 'mark_attended':
+                // Mark volunteer as attended (confirmation only). Set attended_at = NOW()
+                $volunteer_id = isset($_POST['volunteer_id']) ? intval($_POST['volunteer_id']) : 0;
+                if ($volunteer_id > 0) {
+                    $sql = "UPDATE volunteer_registrations SET status = 'attended', attended_at = NOW() WHERE id = ?";
+                    $stmt = mysqli_prepare($connection, $sql);
+                    mysqli_stmt_bind_param($stmt, "i", $volunteer_id);
+
+                    if (mysqli_stmt_execute($stmt)) {
+                        // Delete proofs for this registration (file + DB row) instead of marking approved
+                        $sel = "SELECT id, file_path FROM volunteer_proofs WHERE registration_id = ?";
+                        $sel_st = @mysqli_prepare($connection, $sel);
+                        if ($sel_st) {
+                            mysqli_stmt_bind_param($sel_st, "i", $volunteer_id);
+                            mysqli_stmt_execute($sel_st);
+                            $res = mysqli_stmt_get_result($sel_st);
+                            while ($prow = mysqli_fetch_assoc($res)) {
+                                $pf_id = intval($prow['id']);
+                                $fp = $prow['file_path'] ?? '';
+                                $full = __DIR__ . '/../../' . ltrim($fp, '/');
+                                if ($fp && file_exists($full)) {
+                                    @unlink($full);
+                                }
+                                $del = "DELETE FROM volunteer_proofs WHERE id = ?";
+                                $del_st = @mysqli_prepare($connection, $del);
+                                if ($del_st) {
+                                    mysqli_stmt_bind_param($del_st, "i", $pf_id);
+                                    @mysqli_stmt_execute($del_st);
+                                    @mysqli_stmt_close($del_st);
+                                } else {
+                                    @mysqli_query($connection, "DELETE FROM volunteer_proofs WHERE id = ".intval($pf_id));
+                                }
+                            }
+                            @mysqli_stmt_close($sel_st);
+                        } else {
+                            @mysqli_query($connection, "DELETE FROM volunteer_proofs WHERE registration_id = ".intval($volunteer_id));
+                        }
+
+                        $response = ['success' => true, 'message' => 'Attendance confirmed and proofs removed'];
+                    } else {
+                        $response = ['success' => false, 'message' => 'Failed to confirm attendance: ' . mysqli_error($connection)];
+                    }
+                } else {
+                    $response = ['success' => false, 'message' => 'Invalid volunteer'];
+                }
+                break;
+
         }
     }
     
-    // Always return JSON for AJAX requests
+    // Clean any buffered output before returning JSON to avoid invalid JSON responses
+    if (ob_get_length() !== false) {
+        @ob_end_clean();
+    }
     header('Content-Type: application/json');
     echo json_encode($response);
+    exit;
+}
+
+// --- UPDATED: AJAX endpoint to fetch volunteer proof and volunteer info ---
+// Called via GET: community_service.php?volunteer_proof=123
+if (isset($_GET['volunteer_proof'])) {
+    // buffer any accidental output and clean before sending JSON
+    ob_start();
+
+    $vid = intval($_GET['volunteer_proof']);
+    if ($vid <= 0) {
+        if (ob_get_length() !== false) { @ob_end_clean(); }
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Invalid id']);
+        exit;
+    }
+    // Attempt to fetch latest proof file_path from volunteer_proofs and resident info
+    $q = "SELECT vp.file_path AS proof_path, r.full_name 
+          FROM volunteer_registrations vr
+          LEFT JOIN residents r ON vr.resident_id = r.id
+          LEFT JOIN volunteer_proofs vp ON vp.registration_id = vr.id
+          WHERE vr.id = ?
+          ORDER BY vp.uploaded_at DESC
+          LIMIT 1";
+    $stmt = mysqli_prepare($connection, $q);
+    mysqli_stmt_bind_param($stmt, "i", $vid);
+    mysqli_stmt_execute($stmt);
+    $res = mysqli_stmt_get_result($stmt);
+    if ($res && $row = mysqli_fetch_assoc($res)) {
+        if (ob_get_length() !== false) { @ob_end_clean(); }
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => true,
+            'proof_path' => $row['proof_path'] ?? null,
+            'full_name' => $row['full_name'] ?? ''
+        ]);
+    } else {
+        // no proof found - still attempt to return resident name if possible
+        $rq = "SELECT r.full_name FROM volunteer_registrations vr
+               LEFT JOIN residents r ON vr.resident_id = r.id
+               WHERE vr.id = ? LIMIT 1";
+        $rstmt = mysqli_prepare($connection, $rq);
+        mysqli_stmt_bind_param($rstmt, "i", $vid);
+        mysqli_stmt_execute($rstmt);
+        $rres = mysqli_stmt_get_result($rstmt);
+        $fname = '';
+        if ($rres && $rrow = mysqli_fetch_assoc($rres)) {
+            $fname = $rrow['full_name'];
+        }
+        if (ob_get_length() !== false) { @ob_end_clean(); }
+        header('Content-Type: application/json');
+        echo json_encode(['success' => false, 'message' => 'Not found', 'full_name' => $fname]);
+    }
     exit;
 }
 
 // Get event ID if viewing requests
 $event_id = isset($_GET['view_requests']) ? intval($_GET['view_requests']) : 0;
 $pending_volunteers = [];
+$view_event_title = ''; // hold title when viewing requests
 
-// If viewing requests, get the pending volunteers
+// If viewing requests, get the pending volunteers (case-insensitive status and left join residents)
 if ($event_id > 0) {
-    $sql = "SELECT vr.id, vr.registration_date, r.full_name, r.contact_number, r.email 
+    $sql = "SELECT vr.id, vr.registration_date, COALESCE(r.full_name,'Unknown') AS full_name, r.contact_number, r.email
             FROM volunteer_registrations vr
-            JOIN residents r ON vr.resident_id = r.id 
-            WHERE vr.event_id = ? AND vr.status = 'pending'
+            LEFT JOIN residents r ON vr.resident_id = r.id
+            WHERE vr.event_id = ? AND LOWER(COALESCE(vr.status,'')) = 'pending'
             ORDER BY vr.registration_date ASC";
-            
     $stmt = mysqli_prepare($connection, $sql);
-    mysqli_stmt_bind_param($stmt, "i", $event_id);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    
-    while ($row = mysqli_fetch_assoc($result)) {
-        $pending_volunteers[] = $row;
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, "i", $event_id);
+        mysqli_stmt_execute($stmt);
+        $result = mysqli_stmt_get_result($stmt);
+        while ($row = mysqli_fetch_assoc($result)) {
+            $pending_volunteers[] = $row;
+        }
+    } else {
+        // fallback to simple query if prepare fails
+        $fallback = mysqli_query($connection, "SELECT vr.id, vr.registration_date, COALESCE(r.full_name,'Unknown') AS full_name, r.contact_number, r.email FROM volunteer_registrations vr LEFT JOIN residents r ON vr.resident_id = r.id WHERE vr.event_id = ".intval($event_id)." AND LOWER(COALESCE(vr.status,'')) = 'pending' ORDER BY vr.registration_date ASC");
+        if ($fallback) {
+            while ($row = mysqli_fetch_assoc($fallback)) {
+                $pending_volunteers[] = $row;
+            }
+        }
+    }
+
+    // fetch event title for header
+    $et_sql = "SELECT title FROM events WHERE id = ? LIMIT 1";
+    $et_stmt = mysqli_prepare($connection, $et_sql);
+    if ($et_stmt) {
+        mysqli_stmt_bind_param($et_stmt, "i", $event_id);
+        mysqli_stmt_execute($et_stmt);
+        $et_res = mysqli_stmt_get_result($et_stmt);
+        if ($et_res && $erow = mysqli_fetch_assoc($et_res)) {
+            $view_event_title = $erow['title'];
+        }
     }
 }
 
@@ -144,8 +445,8 @@ $stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
 $volunteer_stats = [];
 $volunteer_stats_query = "SELECT 
     (SELECT COUNT(*) FROM events WHERE status IN ('upcoming', 'ongoing')) as active_events,
-    (SELECT COUNT(DISTINCT resident_id) FROM volunteer_registrations WHERE status = 'approved') as total_volunteers,
-    (SELECT COUNT(*) FROM volunteer_registrations WHERE status = 'pending') as pending_applications";
+    (SELECT COUNT(DISTINCT resident_id) FROM volunteer_registrations WHERE LOWER(COALESCE(status,'')) IN ('approved','attended')) as total_volunteers,
+    (SELECT COUNT(*) FROM volunteer_registrations WHERE LOWER(COALESCE(status,'')) = 'pending') as pending_applications";
 
 $volunteer_result = mysqli_query($connection, $volunteer_stats_query);
 $volunteer_stats = mysqli_fetch_assoc($volunteer_result);
@@ -166,8 +467,8 @@ $total_pages = ceil($total_events / $items_per_page);
 // Modified events query with LIMIT and OFFSET - Only upcoming and ongoing events
 $events_query = "SELECT 
     e.*,
-    COUNT(DISTINCT CASE WHEN vr.status = 'approved' THEN vr.id ELSE NULL END) as volunteer_count,
-    SUM(CASE WHEN vr.status = 'pending' THEN 1 ELSE 0 END) as pending_count
+    COUNT(DISTINCT CASE WHEN LOWER(COALESCE(vr.status,'')) IN ('approved','attended') THEN vr.id ELSE NULL END) as volunteer_count,
+    SUM(CASE WHEN LOWER(COALESCE(vr.status,'')) = 'pending' THEN 1 ELSE 0 END) as pending_count
 FROM events e
 LEFT JOIN volunteer_registrations vr ON e.id = vr.event_id
 WHERE e.status IN ('upcoming', 'ongoing') 
@@ -194,10 +495,10 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
     $event = mysqli_fetch_assoc($event_result);
     
     // Then get the volunteer requests
-    $sql = "SELECT vr.id, vr.registration_date, r.full_name, r.contact_number, r.email 
+    $sql = "SELECT vr.id, vr.registration_date, COALESCE(r.full_name,'Unknown') AS full_name, r.contact_number, r.email 
             FROM volunteer_registrations vr
-            JOIN residents r ON vr.resident_id = r.id 
-            WHERE vr.event_id = ? AND vr.status = 'pending'
+            LEFT JOIN residents r ON vr.resident_id = r.id 
+            WHERE vr.event_id = ? AND LOWER(COALESCE(vr.status,'')) LIKE '%pend%'
             ORDER BY vr.registration_date ASC";
             
     $stmt = mysqli_prepare($connection, $sql);
@@ -210,7 +511,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
         (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && 
          strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest')) {
         
-        if (mysqli_num_rows($result) > 0) {
+        if ($result && mysqli_num_rows($result) > 0) {
             echo "<h3>Pending Requests for: " . htmlspecialchars($event['title']) . "</h3>";
             echo "<div class='table-container' style='margin-top: 1rem;'>";
             echo "<table class='table'>";
@@ -224,7 +525,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
 
             while ($row = mysqli_fetch_assoc($result)) {
                 echo "<tr>";
-                echo "<td>" . htmlspecialchars($row['full_name']) . "</td>";
+                echo "<td>" . htmlspecialchars($row['full_name'] ?? 'Unknown') . "</td>";
                 echo "<td>" . date('M d, Y', strtotime($row['registration_date'])) . "</td>";
                 echo "<td class='table-actions'>
                         <button class='btn btn-success btn-sm' onclick='approveVolunteer(" . $row['id'] . ")'>
@@ -1527,6 +1828,60 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                 </div>
             </div>
 
+            <!-- Pending Requests: shown when ?view_requests=<event_id> is present -->
+            <?php if ($event_id > 0): ?>
+                <div class="section-header">
+                    <h2 class="section-title">Pending Requests<?php echo $view_event_title ? ' — ' . htmlspecialchars($view_event_title) : ''; ?></h2>
+                    <a href="<?php echo htmlspecialchars($_SERVER['PHP_SELF']); ?>" class="btn btn-secondary">Back to Events</a>
+                </div>
+
+                <div class="table-container" style="margin-bottom:2rem;">
+                    <?php if (!empty($pending_volunteers)): ?>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Registration Date</th>
+                                    <th>Contact / Email</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($pending_volunteers as $pv): ?>
+                                    <tr>
+                                        <td class="volunteer-info">
+                                            <div class="volunteer-name"><?php echo htmlspecialchars($pv['full_name']); ?></div>
+                                        </td>
+                                        <td><?php echo date('M d, Y', strtotime($pv['registration_date'])); ?></td>
+                                        <td>
+                                            <?php echo htmlspecialchars($pv['contact_number']); ?><br>
+                                            <small><?php echo htmlspecialchars($pv['email']); ?></small>
+                                        </td>
+                                        <td class="table-actions">
+                                            <button class="btn btn-success btn-sm" onclick="approveVolunteer(<?php echo $pv['id']; ?>)">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                            <button class="btn btn-danger btn-sm" onclick="openRejectModal(<?php echo $pv['id']; ?>, '<?php echo htmlspecialchars($pv['full_name'], ENT_QUOTES); ?>')">
+                                                <i class="fas fa-times"></i> Reject
+                                            </button>
+                                            <button class="btn btn-info btn-sm" onclick="markAttendance(<?php echo $pv['id']; ?>, '<?php echo htmlspecialchars($pv['full_name'], ENT_QUOTES); ?>')">
+                                                <i class="fas fa-image"></i> Proof / Attendance
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    <?php else: ?>
+                        <div class="empty-state" style="padding:1.5rem;">
+                            <i class="fas fa-clipboard-check" style="font-size:2rem; color:#ddd;"></i>
+                            <h3>No Pending Requests</h3>
+                            <p>There are currently no pending volunteer applications for this event.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+
             <!-- Upcoming Events Section -->
             <div class="section-header">
                 <h2 class="section-title">Upcoming Community Events</h2>
@@ -1631,7 +1986,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
     <div class="modal" id="attendanceModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2 class="modal-title">Mark Attendance</h2>
+                <h2 class="modal-title">Confirm Attendance</h2>
                 <button class="modal-close" onclick="closeAttendanceModal()">
                     <i class="fas fa-times"></i>
                 </button>
@@ -1642,28 +1997,26 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                     <input type="hidden" name="volunteer_id" id="attendanceVolunteerId">
                     
                     <p style="margin-bottom: 1rem;">
-                        Marking attendance for: <strong id="attendanceVolunteerName"></strong>
+                        Confirm attendance for: <strong id="attendanceVolunteerName"></strong>
                     </p>
-                    
-                    <div class="form-group">
-                        <label for="hours_served">Hours Served <span style="color: red;">*</span></label>
-                        <input type="number" 
-                               id="hours_served" 
-                               name="hours_served" 
-                               class="form-control" 
-                               placeholder="Enter hours served"
-                               min="0.5"
-                               max="24"
-                               step="0.5"
-                               required>
-                    </div>
 
+                    <!-- Proof image preview -->
+                    <div id="proofContainer" style="margin-bottom:1rem; text-align:center; display:none;">
+                        <p style="margin-bottom:0.5rem;"><small>Volunteer submitted proof:</small></p>
+                        <img id="proofImage" src="" alt="Proof Image" style="max-width:100%; max-height:320px; border-radius:8px; box-shadow:0 4px 12px rgba(0,0,0,0.1);" />
+                    </div>
+                    <div id="noProofNotice" style="margin-bottom:0.75rem; color:#666; display:none;">
+                        No proof image submitted by volunteer.
+                    </div>
+                    
+                    <!-- Confirmation only: no hours input required -->
+ 
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeAttendanceModal()">
                             Cancel
                         </button>
                         <button type="submit" class="btn btn-success">
-                            <i class="fas fa-check"></i> Mark as Attended
+                            <i class="fas fa-check"></i> Confirm Attendance
                         </button>
                     </div>
                 </form>
@@ -1835,7 +2188,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
 				</form>
 			</div>
 		</div>
-	</div>
+		</div>
 
 	<script>
 		// Toggle sidebar
@@ -1980,7 +2333,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
 	                try { showModal('applicationsModal'); } catch(e){}
 	            }
 	        });
-	    }, 0);
+	    },  0);
 	}
 
 	// Helper functions for modals
@@ -2015,6 +2368,8 @@ function showVolunteerApplications(eventId) {
     .then(response => response.text())
     .then(html => {
         list.innerHTML = html;
+        // ... NEW: normalize any server-rendered "Mark Hours" buttons to "Attendance"
+        normalizeMarkHoursButtons(list);
     })
     .catch(error => {
         console.error('Error:', error);
@@ -2098,6 +2453,8 @@ function deleteEvent(eventId) {
     }
 }
 
+
+
 function showEventVolunteers(eventId) {
         const list = document.getElementById('eventVolunteersList');
         showModal('eventVolunteersModal');
@@ -2110,8 +2467,11 @@ function showEventVolunteers(eventId) {
             }
         })
         .then(response => response.text())
+
         .then(html => {
             list.innerHTML = html;
+            // ... NEW: normalize any server-rendered "Mark Hours" buttons to "Attendance"
+            normalizeMarkHoursButtons(list);
         })
         .catch(error => {
             console.error('Error:', error);
@@ -2142,6 +2502,7 @@ function showEventVolunteers(eventId) {
                 Swal.fire({
                     icon: 'success',
                     title: 'Success',
+                   
                     text: data.message,
                     timer: 2000,
                     showConfirmButton: false
@@ -2170,6 +2531,160 @@ function showEventVolunteers(eventId) {
             });
         });
     });
+
+    // Helper to open attendance modal: fetch proof image and populate modal
+    function openAttendanceModal(volunteerId, volunteerName) {
+        const modal = document.getElementById('attendanceModal');
+        const nameEl = document.getElementById('attendanceVolunteerName');
+        const idEl = document.getElementById('attendanceVolunteerId');
+        const proofImg = document.getElementById('proofImage');
+        const proofContainer = document.getElementById('proofContainer');
+        const noProof = document.getElementById('noProofNotice');
+
+        nameEl.textContent = volunteerName || 'Volunteer';
+        idEl.value = volunteerId;
+        // reset proof visibility
+        proofImg.src = '';
+        proofContainer.style.display = 'none';
+        noProof.style.display = 'none';
+
+        // fetch proof via AJAX
+        fetch(`community_service.php?volunteer_proof=${encodeURIComponent(volunteerId)}`, {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data && data.success && data.proof_path) {
+                // construct absolute path if needed
+                let src = data.proof_path;
+                // If returned path is relative (uploads/...), ensure correct base
+                if (src && !src.match(/^https?:\/\//i)) {
+                    // attempt to build relative to webroot - adjust if your uploads root differs
+                    src = src.startsWith('/') ? src : ('../../' + src);
+                }
+                proofImg.src = src;
+                proofContainer.style.display = 'block';
+            } else {
+                noProof.style.display = 'block';
+            }
+            // show modal
+            modal.classList.add('active');
+        })
+        .catch(err => {
+            console.error('Error fetching proof:', err);
+            noProof.style.display = 'block';
+            modal.classList.add('active');
+        });
+    }
+
+    function closeAttendanceModal() {
+        const modal = document.getElementById('attendanceModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        // if we previously hid the event volunteers modal to show attendance, restore it
+        if (window._reopenEventVolunteersAfterAttendance) {
+            try {
+                // small delay so the attendance modal fully hides before showing the underlying modal
+                setTimeout(function() {
+                    showModal('eventVolunteersModal');
+                }, 80);
+            } catch (e) {
+                console.error('Failed to reopen event volunteers modal', e);
+            } finally {
+                // reset flag
+                window._reopenEventVolunteersAfterAttendance = false;
+            }
+        }
+    }
+
+    // global shortcut helper for buttons in volunteers list (so existing markup can call this)
+    function markAttendance(volunteerId, volunteerName) {
+        // minimize / hide the event volunteers modal first so the attendance modal appears on top
+        try {
+            // remember we hid the event volunteers modal so we can reopen it when attendance modal closes
+            window._reopenEventVolunteersAfterAttendance = true;
+            hideModal('eventVolunteersModal');
+        } catch (e) {
+            // ignore if modal not present
+            window._reopenEventVolunteersAfterAttendance = false;
+        }
+
+        // small timeout ensures hiding animation completes (if any) before opening attendance modal
+        setTimeout(function() {
+            openAttendanceModal(volunteerId, volunteerName);
+        }, 50);
+    }
+
+    // submit attendance form via AJAX
+    document.getElementById('attendanceForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const form = this;
+        const fd = new FormData(form);
+
+        fetch(window.location.pathname, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(r => r.text().then(t => ({ ok: r.ok, text: t })))
+        .then(({ ok, text }) => {
+            let data;
+            try { data = JSON.parse(text); } catch (e) {
+                console.error('Invalid JSON response:', text);
+                throw new Error('Server returned an unexpected response. Check console/network.');
+            }
+            if (data && data.success) {
+                // Prevent reopening the event volunteers modal — this is a confirmed attendance
+                window._reopenEventVolunteersAfterAttendance = false;
+                closeAttendanceModal();
+                Swal.fire({ icon: 'success', title: 'Attendance', text: data.message, timer: 1400, showConfirmButton: false })
+                    .then(() => location.reload());
+            } else {
+                throw new Error(data.message || 'Failed to confirm attendance');
+            }
+        })
+        .catch(err => {
+            console.error('Attendance error:', err);
+            Swal.fire({ icon: 'error', title: 'Error', text: err.message || 'Failed to confirm attendance' });
+        });
+    });
+
+// add helper function near other JS helpers
+function normalizeMarkHoursButtons(container) {
+    try {
+        if (!container) container = document;
+        const buttons = container.querySelectorAll('button, a'); // handle <a> as well if used
+        buttons.forEach(el => {
+            // normalize textual occurrences of "Mark Hours" -> "Attendance"
+            // preserve icons and other HTML by replacing text nodes only
+            let changed = false;
+            el.childNodes.forEach(node => {
+                if (node.nodeType === Node.TEXT_NODE && node.nodeValue && node.nodeValue.trim().includes('Mark Hours')) {
+                    node.nodeValue = node.nodeValue.replace(/Mark Hours/g, 'Attendance');
+                    changed = true;
+                }
+            });
+            // also check title / aria-label attributes
+            ['title','aria-label'].forEach(attr => {
+                const v = el.getAttribute(attr);
+                if (v && v.includes('Mark Hours')) {
+                    el.setAttribute(attr, v.replace(/Mark Hours/g, 'Attendance'));
+                    changed = true;
+                }
+            });
+            // if no text node matched but innerText contains the phrase (e.g. wrapped in spans), do a safe innerHTML replace
+            if (!changed && el.innerText && el.innerText.includes('Mark Hours')) {
+                // attempt to replace only the visible text portion while preserving HTML structure where possible
+                el.innerHTML = el.innerHTML.replace(/Mark Hours/g, 'Attendance');
+            }
+        });
+    } catch (e) {
+        console.error('normalizeMarkHoursButtons error', e);
+    }
+}
 	</script>
 </body>
 </html>

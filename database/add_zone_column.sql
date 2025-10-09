@@ -1,3 +1,0 @@
-ALTER TABLE residents 
-ADD COLUMN zone VARCHAR(50) NOT NULL DEFAULT 'Zone 1' 
-AFTER status;

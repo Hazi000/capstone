@@ -3,10 +3,10 @@
 class PHPMailer {
     private $host = 'smtp.gmail.com';
     private $port = 465; // SSL port for Gmail
-    private $username = 'cawitbarangayemail@gmail.com';
-    private $password = 'ilrxfhoevpkmpfmx';
-    public $From = 'cawitbarangayemail@gmail.com';
-    public $FromName = 'Barangay Management System';
+    private $username = 'capstttoone000@gmail.com';
+    private $password = 'tslzbwtzhccdgtxf';
+    public $From = 'capstttoone000@gmail.com';
+    public $FromName = 'Cawit Barangay Management System';
     public $Subject;
     public $Body;
     public $To;

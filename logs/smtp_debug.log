@@ -1,0 +1,599 @@
+[2025-10-09 04:57:40] Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034f08912sm11606735ad.78 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034f08912sm11606735ad.78 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034f08912sm11606735ad.78 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f08912sm11606735ad.78 - gsmtp
+DATA command not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f08912sm11606735ad.78 - gsmtp
+
+
+[2025-10-09 04:58:05] Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d2e1a72fcca58-794e22ab4ffsm1186015b3a.70 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d2e1a72fcca58-794e22ab4ffsm1186015b3a.70 - gsmtp
+C: RCPT TO:<c220234@pczc.edu.ph>
+S: 250 2.1.5 OK d2e1a72fcca58-794e22ab4ffsm1186015b3a.70 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794e22ab4ffsm1186015b3a.70 - gsmtp
+DATA command not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794e22ab4ffsm1186015b3a.70 - gsmtp
+
+
+[2025-10-09 04:58:36] Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034e20479sm11917065ad.47 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034e20479sm11917065ad.47 - gsmtp
+C: RCPT TO:<c220234@pczc.edu.ph>
+S: 250 2.1.5 OK d9443c01a7336-29034e20479sm11917065ad.47 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034e20479sm11917065ad.47 - gsmtp
+DATA command not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034e20479sm11917065ad.47 - gsmtp
+
+
+[2025-10-09 05:01:46] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034de56desm12192465ad.19 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034de56desm12192465ad.19 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034de56desm12192465ad.19 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034de56desm12192465ad.19 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034de56desm12192465ad.19 - gsmtp
+
+
+[2025-10-09 05:01:51] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034f36c3fsm11685045ad.98 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034f36c3fsm11685045ad.98 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034f36c3fsm11685045ad.98 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f36c3fsm11685045ad.98 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f36c3fsm11685045ad.98 - gsmtp
+
+
+[2025-10-09 05:01:55] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d2e1a72fcca58-794dbc5a73csm1200211b3a.44 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d2e1a72fcca58-794dbc5a73csm1200211b3a.44 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d2e1a72fcca58-794dbc5a73csm1200211b3a.44 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794dbc5a73csm1200211b3a.44 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794dbc5a73csm1200211b3a.44 - gsmtp
+
+
+[2025-10-09 05:02:00] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP 98e67ed59e1d1-33b513ae55dsm5085542a91.25 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK 98e67ed59e1d1-33b513ae55dsm5085542a91.25 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK 98e67ed59e1d1-33b513ae55dsm5085542a91.25 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 98e67ed59e1d1-33b513ae55dsm5085542a91.25 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 98e67ed59e1d1-33b513ae55dsm5085542a91.25 - gsmtp
+
+
+[2025-10-09 05:02:04] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034e43d60sm11993165ad.58 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034e43d60sm11993165ad.58 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034e43d60sm11993165ad.58 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034e43d60sm11993165ad.58 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034e43d60sm11993165ad.58 - gsmtp
+
+
+[2025-10-09 05:02:10] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034f08912sm11690365ad.78 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034f08912sm11690365ad.78 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034f08912sm11690365ad.78 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f08912sm11690365ad.78 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f08912sm11690365ad.78 - gsmtp
+
+
+[2025-10-09 05:02:14] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034f8f9e0sm11679875ad.120 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034f8f9e0sm11679875ad.120 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034f8f9e0sm11679875ad.120 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f8f9e0sm11679875ad.120 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f8f9e0sm11679875ad.120 - gsmtp
+
+
+[2025-10-09 05:02:19] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d2e1a72fcca58-794dbc5aadasm1209082b3a.50 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d2e1a72fcca58-794dbc5aadasm1209082b3a.50 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d2e1a72fcca58-794dbc5aadasm1209082b3a.50 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794dbc5aadasm1209082b3a.50 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794dbc5aadasm1209082b3a.50 - gsmtp
+
+
+[2025-10-09 05:02:24] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034f36929sm11761445ad.95 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034f36929sm11761445ad.95 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034f36929sm11761445ad.95 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f36929sm11761445ad.95 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034f36929sm11761445ad.95 - gsmtp
+
+
+[2025-10-09 05:02:29] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d2e1a72fcca58-794d4b3d4aesm1218397b3a.12 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d2e1a72fcca58-794d4b3d4aesm1218397b3a.12 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d2e1a72fcca58-794d4b3d4aesm1218397b3a.12 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794d4b3d4aesm1218397b3a.12 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d2e1a72fcca58-794d4b3d4aesm1218397b3a.12 - gsmtp
+
+
+[2025-10-09 05:02:34] mail() returned false or failed
+Connected to smtp.gmail.com:587
+Initial: 220 smtp.gmail.com ESMTP d9443c01a7336-29034e39727sm11898125ad.51 - gsmtp
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-STARTTLS
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: STARTTLS
+S: 220 2.0.0 Ready to start TLS
+stream_socket_enable_crypto: OK
+C: EHLO localhost
+S: 250-smtp.gmail.com at your service, [112.198.163.21]
+250-SIZE 35882577
+250-8BITMIME
+250-AUTH LOGIN PLAIN XOAUTH2 PLAIN-CLIENTTOKEN OAUTHBEARER XOAUTH
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-CHUNKING
+250 SMTPUTF8
+C: AUTH LOGIN
+S: 334 VXNlcm5hbWU6
+C: Y2F3aXRiYXJhbmdheWVtYWlsQGdtYWlsLmNvbQ==
+S: 334 UGFzc3dvcmQ6
+C: aWxyeGZob2V2cGttcGZteA==
+S: 235 2.7.0 Accepted
+C: MAIL FROM:<cawitbarangayemail@gmail.com>
+S: 250 2.1.0 OK d9443c01a7336-29034e39727sm11898125ad.51 - gsmtp
+C: RCPT TO:<alhazierratag12@gmail.com>
+S: 250 2.1.5 OK d9443c01a7336-29034e39727sm11898125ad.51 - gsmtp
+C: DATA
+S: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034e39727sm11898125ad.51 - gsmtp
+DATA not accepted: 550-5.4.5 Daily user sending limit exceeded. For more information on Gmail
+550-5.4.5 sending limits go to
+550 5.4.5  https://support.google.com/a/answer/166852 d9443c01a7336-29034e39727sm11898125ad.51 - gsmtp
+
+

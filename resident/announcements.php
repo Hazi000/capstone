@@ -2,6 +2,11 @@
 session_start();
 require_once '../config.php';
 
+// --- NEW: force PHP to use Philippine time for display and comparisons
+date_default_timezone_set('Asia/Manila');
+$manila_tz = new DateTimeZone('Asia/Manila');
+$now_manila = new DateTime('now', $manila_tz);
+
 // Handle volunteer signup from resident
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'volunteer_signup') {
     $resident_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null);
@@ -91,6 +96,130 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     exit();
 }
 
+// --- NEW: Handle attendance submission with camera image upload ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'submit_attendance') {
+    $resident_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null);
+    $registration_id = isset($_POST['registration_id']) ? intval($_POST['registration_id']) : 0;
+
+    if (empty($resident_id) || $registration_id <= 0) {
+        $_SESSION['error_message'] = "Invalid attendance request.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    // Verify registration belongs to this resident/user
+    $verify_sql = "SELECT id, event_id, resident_id FROM volunteer_registrations WHERE id = ? LIMIT 1";
+    $verify_stmt = mysqli_prepare($connection, $verify_sql);
+    if (!$verify_stmt) {
+        error_log("DB prepare error (verify): " . mysqli_error($connection));
+        $_SESSION['error_message'] = "System error.";
+        header("Location: announcements.php");
+        exit();
+    }
+    mysqli_stmt_bind_param($verify_stmt, "i", $registration_id);
+    mysqli_stmt_execute($verify_stmt);
+    $verify_res = mysqli_stmt_get_result($verify_stmt);
+    $reg = mysqli_fetch_assoc($verify_res);
+    mysqli_stmt_close($verify_stmt);
+
+    if (!$reg || intval($reg['resident_id']) !== intval($resident_id)) {
+        $_SESSION['error_message'] = "Registration not found or not authorized.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    // Validate uploaded file
+    if (!isset($_FILES['attendance_image']) || $_FILES['attendance_image']['error'] !== UPLOAD_ERR_OK) {
+        $_SESSION['error_message'] = "Please capture a photo to confirm attendance.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    $file = $_FILES['attendance_image'];
+    $allowed_types = ['image/jpeg','image/jpg','image/png'];
+    if (!in_array($file['type'], $allowed_types)) {
+        $_SESSION['error_message'] = "Invalid file type. Only JPG/PNG allowed.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    // Prepare upload directory
+    $upload_dir = __DIR__ . '/../uploads/volunteer_proofs/';
+    if (!is_dir($upload_dir)) {
+        @mkdir($upload_dir, 0755, true);
+    }
+
+    $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
+    $filename = 'vp_' . $registration_id . '_' . time() . '.' . $ext;
+    $target_path = $upload_dir . $filename;
+    $web_path = 'uploads/volunteer_proofs/' . $filename; // store web-relative path in DB
+
+    if (!move_uploaded_file($file['tmp_name'], $target_path)) {
+        $_SESSION['error_message'] = "Failed to save uploaded image. Please try again.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    // Ensure volunteer_proofs has a status enum column (pending/approved/rejected)
+    $vp_cols_res = @mysqli_query($connection, "DESCRIBE `volunteer_proofs`");
+    $vp_cols = [];
+    if ($vp_cols_res) {
+        while ($c = mysqli_fetch_assoc($vp_cols_res)) {
+            $vp_cols[] = $c['Field'];
+        }
+        mysqli_free_result($vp_cols_res);
+    }
+
+    $has_vp_status = in_array('status', $vp_cols);
+    if (!$has_vp_status) {
+        $alter_vp = "ALTER TABLE `volunteer_proofs` ADD COLUMN `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending'";
+        if (@mysqli_query($connection, $alter_vp)) {
+            $has_vp_status = true;
+        } else {
+            error_log("Failed to ALTER volunteer_proofs to add status column: " . mysqli_error($connection));
+        }
+    }
+
+    // Insert proof record; include status explicitly when column exists
+    if ($has_vp_status) {
+        $ins_sql = "INSERT INTO volunteer_proofs (registration_id, file_path, file_name, file_type, file_size, uploaded_by, status) VALUES (?, ?, ?, ?, ?, ?, 'pending')";
+    } else {
+        $ins_sql = "INSERT INTO volunteer_proofs (registration_id, file_path, file_name, file_type, file_size, uploaded_by) VALUES (?, ?, ?, ?, ?, ?)";
+    }
+    $ins_stmt = mysqli_prepare($connection, $ins_sql);
+    if (!$ins_stmt) {
+        error_log("DB prepare error (insert proof): " . mysqli_error($connection));
+        @unlink($target_path);
+        $_SESSION['error_message'] = "Failed to record attendance proof. System error.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    $fname = $filename;
+    $ftype = $file['type'];
+    $fsize = intval($file['size']);
+    $uploaded_by = $resident_id;
+
+    // bind params (same types either way)
+    mysqli_stmt_bind_param($ins_stmt, "isssii", $registration_id, $web_path, $fname, $ftype, $fsize, $uploaded_by);
+
+    if (!mysqli_stmt_execute($ins_stmt)) {
+        error_log("DB execute error (insert proof): " . mysqli_stmt_error($ins_stmt));
+        mysqli_stmt_close($ins_stmt);
+        @unlink($target_path);
+        $_SESSION['error_message'] = "Failed to record attendance proof. System error.";
+        header("Location: announcements.php");
+        exit();
+    }
+
+    $proof_id = mysqli_insert_id($connection);
+    mysqli_stmt_close($ins_stmt);
+
+    $_SESSION['success_message'] = "Attendance proof submitted and is waiting for approval.";
+    header("Location: announcements.php");
+    exit();
+}
+
 // Modify events query to properly check volunteer status
 $current_user_id = isset($_SESSION['resident_id']) ? intval($_SESSION['resident_id']) : (isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : 0);
 
@@ -117,17 +246,18 @@ $events_query = "SELECT
     u.full_name as created_by_name,
     COUNT(DISTINCT CASE WHEN vr.status = 'approved' THEN vr.id ELSE NULL END) as volunteer_count,
     SUM(CASE WHEN vr.status = 'pending' THEN 1 ELSE 0 END) as pending_count,
+    v_user.id as user_registration_id,
     v_user.status as user_volunteer_status
 FROM events e 
 LEFT JOIN users u ON e.created_by = u.id 
 LEFT JOIN volunteer_registrations vr ON vr.event_id = e.id 
 LEFT JOIN volunteer_registrations v_user ON v_user.event_id = e.id 
-    AND v_user.resident_id = $current_user_id
+    AND v_user.resident_id = {$current_user_id}
 WHERE e.status = 'upcoming'
 AND e.event_start_date >= CURDATE()
 GROUP BY e.id
 ORDER BY e.event_start_date ASC
-LIMIT $per_page OFFSET $offset";
+LIMIT {$per_page} OFFSET {$offset}";
 
 $result = mysqli_query($connection, $events_query);
 $events = [];
@@ -963,8 +1093,28 @@ if ($result) {
                 <?php else: ?>
                     <div class="events-grid">
                         <?php foreach ($events as $ev): 
-                            // ensure not showing past events (safety)
-                            if (!empty($ev['event_start_date']) && strtotime($ev['event_start_date']) < strtotime(date('Y-m-d'))) continue;
+                            // Parse event start into Manila DateTime when possible
+                            $evStartDt = false;
+                            if (!empty($ev['event_start_date'])) {
+                                try {
+                                    $evStartDt = new DateTime($ev['event_start_date']);
+                                    $evStartDt->setTimezone($manila_tz);
+                                } catch (Exception $e) {
+                                    $evStartDt = false;
+                                }
+                            }
+
+                            // safety: skip events whose Manila start DATE is before today
+                            if ($evStartDt instanceof DateTime) {
+                                if ($evStartDt->format('Y-m-d') < $now_manila->format('Y-m-d')) {
+                                    continue;
+                                }
+                            } else {
+                                // fallback: if raw start_date string exists and is before today (server time), skip
+                                if (!empty($ev['event_start_date']) && strtotime($ev['event_start_date']) < strtotime(date('Y-m-d'))) {
+                                    continue;
+                                }
+                            }
                         ?>
                             <div class="event-card">
                                 <div class="event-header">
@@ -977,34 +1127,51 @@ if ($result) {
                                     </div>
                                     <div class="event-date">
                                         <i class="fas fa-calendar"></i>
-                                        <?php echo date('F j, Y', strtotime($ev['event_start_date'])); ?>
+                                        <?php
+                                            // Format start date in Manila
+                                            if ($evStartDt instanceof DateTime) {
+                                                echo $evStartDt->format('F j, Y');
+                                            } else {
+                                                echo htmlspecialchars($ev['event_start_date']);
+                                            }
+                                        ?>
                                     </div>
                                 </div>
                                 <div class="event-body">
                                     <div class="event-info">
                                         <?php if (!empty($ev['event_time'])): ?>
                                             <div class="event-info-item">
-                                                <i class="far fa-clock"></i> 
-                                                <?php 
-                                                    $time = date('g:i A', strtotime($ev['event_time'])); 
-                                                    echo htmlspecialchars($time); 
+                                                <i class="far fa-clock"></i>
+                                                <?php
+                                                    // Format event_time in Manila (accept H:i or H:i:s)
+                                                    $formatted_time = htmlspecialchars($ev['event_time']);
+                                                    try {
+                                                        $t = DateTime::createFromFormat('H:i:s', $ev['event_time'], $manila_tz)
+                                                             ?: DateTime::createFromFormat('H:i', $ev['event_time'], $manila_tz)
+                                                             ?: new DateTime($ev['event_time'], $manila_tz);
+                                                        $t->setTimezone($manila_tz);
+                                                        $formatted_time = $t->format('g:i A');
+                                                    } catch (Exception $e) {
+                                                        // keep fallback string
+                                                    }
+                                                    echo htmlspecialchars($formatted_time);
                                                 ?>
                                             </div>
                                         <?php endif; ?>
+
                                         <?php if (!empty($ev['location'])): ?>
                                             <div class="event-info-item">
                                                 <i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($ev['location']); ?>
                                             </div>
                                         <?php endif; ?>
+
                                         <div class="event-info-item">
                                             <i class="fas fa-users"></i>
                                             Volunteers: <?php echo intval($ev['volunteer_count']); ?>
-                                            <?php if (!empty($ev['max_volunteers'])): ?>
-                                                /<?php echo intval($ev['max_volunteers']); ?>
-                                            <?php endif; ?>
+                                            <?php if (!empty($ev['max_volunteers'])): ?> /<?php echo intval($ev['max_volunteers']); ?><?php endif; ?>
                                         </div>
                                     </div>
-                                 
+
                                     <div class="event-actions">
                                         <?php
                                         $approved = intval($ev['volunteer_count']);
@@ -1014,15 +1181,33 @@ if ($result) {
                                         $is_logged_in = isset($_SESSION['resident_id']) || isset($_SESSION['user_id']);
                                         $has_volunteered = !empty($ev['user_volunteer_status']);
 
-                                        // Determine if attendance button should be enabled
+                                        // Determine if attendance button should be enabled using Manila datetime
                                         $attendance_enabled = false;
-                                        if ($has_volunteered && $ev['user_volunteer_status'] === 'approved') {
-                                            $start_date = $ev['event_start_date'] ?? null;
-                                            $start_time = !empty($ev['event_time']) ? $ev['event_time'] : '00:00:00';
-                                            if ($start_date) {
-                                                $start_dt = strtotime($start_date . ' ' . $start_time);
-                                                if ($start_dt !== false && $start_dt <= time()) {
+                                        if ($has_volunteered && ($ev['user_volunteer_status'] ?? '') === 'approved') {
+                                            if ($evStartDt instanceof DateTime) {
+                                                // create a start datetime in Manila including time if provided
+                                                $start_dt = clone $evStartDt;
+                                                if (!empty($ev['event_time'])) {
+                                                    $parts = explode(':', $ev['event_time']);
+                                                    $h = intval($parts[0] ?? 0);
+                                                    $m = intval($parts[1] ?? 0);
+                                                    $s = intval($parts[2] ?? 0);
+                                                    $start_dt->setTime($h, $m, $s);
+                                                } else {
+                                                    $start_dt->setTime(0,0,0);
+                                                }
+                                                if ($start_dt <= $now_manila) {
                                                     $attendance_enabled = true;
+                                                }
+                                            } else {
+                                                // fallback to previous timestamp-based logic
+                                                $start_date = $ev['event_start_date'] ?? null;
+                                                $start_time = !empty($ev['event_time']) ? $ev['event_time'] : '00:00:00';
+                                                if ($start_date) {
+                                                    $start_ts = strtotime($start_date . ' ' . $start_time);
+                                                    if ($start_ts !== false && $start_ts <= time()) {
+                                                        $attendance_enabled = true;
+                                                    }
                                                 }
                                             }
                                         }
@@ -1034,7 +1219,7 @@ if ($result) {
                                                     type="button" 
                                                     class="btn-attendance" 
                                                     <?php echo $attendance_enabled ? '' : 'disabled'; ?> 
-                                                    onclick="markAttendance(<?php echo intval($ev['id']); ?>)">
+                                                    onclick="openAttendanceModal(<?php echo intval($ev['user_registration_id'] ?? 0); ?>, '<?php echo addslashes($ev['title']); ?>')">
                                                     <i class="fas fa-clipboard-check"></i>
                                                     Attendance
                                                 </button>
@@ -1207,6 +1392,138 @@ if ($result) {
                 });
             }
         }
+
+        /* --- NEW JS: openAttendanceModal using SweetAlert2, capture camera image and POST to page --- */
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+/* --- UPDATED openAttendanceModal: no jQuery, uses escapeHtml --- */
+function openAttendanceModal(registrationId, eventTitle) {
+    if (!registrationId || registrationId <= 0) {
+        Swal.fire({ icon: 'error', title: 'Error', text: 'Registration not found.' });
+        return;
+    }
+
+    let capturedBlob = null;
+
+    Swal.fire({
+        title: 'Confirm Attendance',
+        html:
+            '<p style="font-weight:600; margin-bottom:0.5rem;">' + (eventTitle ? escapeHtml(eventTitle) : 'Event Attendance') + '</p>' +
+            '<video id="swalVideo" autoplay playsinline style="width:100%;border-radius:8px;background:#000;"></video>' +
+            '<canvas id="swalCanvas" style="display:none;"></canvas>' +
+            '<div style="margin-top:0.5rem; display:flex; gap:0.5rem; justify-content:center;">' +
+                '<button type="button" id="swalCaptureBtn" class="swal2-confirm swal2-styled" style="background:#10b981;border:none;">Capture</button>' +
+            '</div>' +
+            '<p id="swalCaptureHint" style="font-size:0.85rem;color:#6b7280;margin-top:0.5rem;text-align:center;">Tap Capture when ready</p>',
+        showCancelButton: true,
+        showConfirmButton: true,
+        confirmButtonText: 'Submit Attendance',
+        didOpen: () => {
+            const video = document.getElementById('swalVideo');
+            const canvas = document.getElementById('swalCanvas');
+            const captureBtn = document.getElementById('swalCaptureBtn');
+            const hint = document.getElementById('swalCaptureHint');
+
+            // start camera
+            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+                .then((stream) => {
+                    if (video) {
+                        video.srcObject = stream;
+                        video._stream = stream;
+                        video.play().catch(()=>{});
+                    }
+                })
+                .catch((err) => {
+                    console.error('Camera error', err);
+                    if (hint) hint.textContent = 'Unable to access camera. Please allow camera access.';
+                });
+            } else {
+                if (hint) hint.textContent = 'Camera not supported on this device.';
+            }
+
+            // capture button handler (guard existence)
+            if (captureBtn && video && canvas) {
+                captureBtn.addEventListener('click', function () {
+                    const w = video.videoWidth || 640;
+                    const h = video.videoHeight || 480;
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0, w, h);
+
+                    canvas.toBlob(function(blob) {
+                        capturedBlob = blob;
+                        // stop video stream
+                        if (video._stream) {
+                            try { video.srcObject.getTracks().forEach(t => t.stop()); } catch(e){}
+                        }
+                        const img = document.createElement('img');
+                        img.src = URL.createObjectURL(blob);
+                        img.style.width = '100%';
+                        img.style.borderRadius = '8px';
+                        video.parentNode.replaceChild(img, video);
+
+                        if (hint) hint.textContent = 'Captured. Press "Submit Attendance" to upload.';
+                        canvas.dataset.captured = '1';
+                    }, 'image/jpeg', 0.9);
+                });
+            }
+        },
+        preConfirm: () => {
+            return new Promise((resolve, reject) => {
+                const canvas = document.getElementById('swalCanvas');
+                if (!canvas || !canvas.dataset.captured || !capturedBlob) {
+                    Swal.showValidationMessage('Please capture a photo first.');
+                    return reject();
+                }
+
+                // Build a hidden form to POST with multipart/form-data
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'announcements.php';
+                form.enctype = 'multipart/form-data';
+                form.style.display = 'none';
+
+                const a = document.createElement('input');
+                a.type = 'hidden'; a.name = 'action'; a.value = 'submit_attendance'; form.appendChild(a);
+
+                const b = document.createElement('input');
+                b.type = 'hidden'; b.name = 'registration_id'; b.value = registrationId; form.appendChild(b);
+
+                const fileInput = document.createElement('input');
+                fileInput.type = 'file'; fileInput.name = 'attendance_image';
+
+                const dt = new DataTransfer();
+                dt.items.add(new File([capturedBlob], 'attendance.jpg', {type: 'image/jpeg'}));
+                fileInput.files = dt.files;
+                form.appendChild(fileInput);
+
+                document.body.appendChild(form);
+                form.submit();
+
+                // prevent Swal from closing immediately
+                return false;
+            });
+        }
+    });
+}
+
+/* Remove/replace older markAttendance if present; keep as wrapper for backward compatibility */
+function markAttendance(registrationOrEventId) {
+    // If passed a registration id, use it; otherwise inform
+    openAttendanceModal(registrationOrEventId, '');
+}
+
+/* ...existing code... */
     </script>
 </body>
 </html>
