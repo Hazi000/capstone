@@ -84,10 +84,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Get face descriptor if provided
                 if (!empty($_POST['face_descriptor'])) {
-                    $face_descriptor = mysqli_real_escape_string($connection, $_POST['face_descriptor']);
+                    $face_descriptor = $_POST['face_descriptor']; // keep raw JSON string for storage
                 }
 
-                // If existing resident ID provided, update that resident instead of inserting new
+                // NEW: Server-side duplicate detection to prevent profiling duplication
+                // Check by contact_number or exact full_name (case-insensitive). If face_descriptor is provided,
+                // compute Euclidean distance against stored descriptors and treat as duplicate when distance < 0.6.
+                if ($existing_id === 0) { // only auto-detect when user didn't already indicate an existing resident
+                    $safe_full_lower = mysqli_real_escape_string($connection, mb_strtolower($full_name));
+                    $dup_sql = "SELECT id, full_name, contact_number, face_descriptor, photo_path FROM residents 
+                                WHERE contact_number = '$contact_number' OR LOWER(full_name) = '$safe_full_lower' LIMIT 1";
+                    $dup_res = mysqli_query($connection, $dup_sql);
+                    if ($dup_res && ($dup_row = mysqli_fetch_assoc($dup_res))) {
+                        $found_id = (int)$dup_row['id'];
+                        $is_duplicate = false;
+
+                        // If both descriptors exist, attempt numeric distance check
+                        if (!empty($face_descriptor) && !empty($dup_row['face_descriptor'])) {
+                            // try to parse descriptors into arrays
+                            $incoming = json_decode($face_descriptor, true);
+                            $stored  = json_decode($dup_row['face_descriptor'], true);
+                            if (is_array($incoming) && is_array($stored) && count($incoming) === count($stored)) {
+                                // compute euclidean distance
+                                $sum = 0.0;
+                                for ($i = 0, $n = count($incoming); $i < $n; $i++) {
+                                    $d = floatval($incoming[$i]) - floatval($stored[$i]);
+                                    $sum += $d * $d;
+                                }
+                                $distance = sqrt($sum);
+                                // threshold 0.6 (tune as needed)
+                                if ($distance < 0.6) {
+                                    $is_duplicate = true;
+                                }
+                            }
+                        }
+
+                        // If we don't have descriptors but contact/fullname matched, treat as duplicate
+                        if (!$is_duplicate) {
+                            if ($dup_row['contact_number'] === $contact_number) {
+                                $is_duplicate = true;
+                            } elseif (mb_strtolower($dup_row['full_name']) === mb_strtolower($full_name)) {
+                                $is_duplicate = true;
+                            }
+                        }
+
+                        if ($is_duplicate) {
+                            // Route to update existing resident (re-use update path below by setting $existing_id)
+                            $existing_id = $found_id;
+                            // Optionally notify user via session; update logic will perform the update and redirect.
+                            $_SESSION['success_message'] = "An existing resident was detected and will be updated instead of creating a duplicate.";
+                        }
+                    }
+                }
+
+                // If existing resident ID provided (or auto-detected), update that resident instead of inserting new
                 if ($existing_id > 0) {
                     // Build update query; set suffix = NULL and status = NULL as requested.
                     $update_parts = [];
@@ -104,7 +154,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($face_descriptor) {
-                        $update_parts[] = "face_descriptor = '$face_descriptor'";
+                        $fd_safe = mysqli_real_escape_string($connection, $face_descriptor);
+                        $update_parts[] = "face_descriptor = '$fd_safe'";
                     }
 
                     // include suffix column properly (allow NULL)
@@ -129,12 +180,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         exit();
                     }
                 } else {
-                    // Regular insert when no existing resident id
+                    // Regular insert when no existing resident id detected
+                    $fd_safe_insert = $face_descriptor ? ("'" . mysqli_real_escape_string($connection, $face_descriptor) . "'") : "NULL";
+                    $photo_insert = $photo_path ? ("'" . mysqli_real_escape_string($connection, $photo_path) . "'") : "NULL";
+
                     $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, suffix, age, contact_number, zone, photo_path, face_descriptor) 
                                    VALUES ('$first_name', " . ($middle_initial !== '' ? "'$middle_initial'" : "NULL") . ", '$last_name', '$full_name', " . 
                                    ($suffix ? "'$suffix'" : "NULL") . ", $age, '$contact_number', '$zone', " . 
-                                   ($photo_path ? "'$photo_path'" : "NULL") . ", " .
-                                   ($face_descriptor ? "'$face_descriptor'" : "NULL") . ")";
+                                   $photo_insert . ", " .
+                                   $fd_safe_insert . ")";
 
                     if (mysqli_query($connection, $insert_query)) {
                         $_SESSION['success_message'] = "Resident added successfully with face data!";

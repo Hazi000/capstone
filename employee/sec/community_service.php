@@ -556,7 +556,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Community Service - Barangay Management System</title>
+    <title>Community Service - Cawit Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="../../css/community-service.css" rel="stylesheet">
     <!-- Ensure SweetAlert2 is loaded before any script that calls Swal -->
@@ -1650,7 +1650,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
         <div class="sidebar-header">
             <div class="sidebar-brand">
                 <i class="fas fa-building"></i>
-                Barangay Management
+                Cawit Barangay Management
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>

@@ -7,6 +7,9 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
     exit();
 }
 
+// Default expiry date set to 1 week from now
+$default_expiry = date('Y-m-d', strtotime('+1 week'));
+
 // Handle Create/Update/Delete operations
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
@@ -15,7 +18,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $title = mysqli_real_escape_string($connection, $_POST['title']);
                 $content = mysqli_real_escape_string($connection, $_POST['content']);
                 $announcement_type = mysqli_real_escape_string($connection, $_POST['announcement_type']);
-                $expiry_date = mysqli_real_escape_string($connection, $_POST['expiry_date']);
+                // Force expiry date to be 1 week from now
+                $expiry_date = date('Y-m-d', strtotime('+1 week'));
                 $created_by = $_SESSION['user_id'];
 
                 $query = "INSERT INTO announcements (title, content, announcement_type, expiry_date, created_by, status) 
@@ -33,13 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $title = mysqli_real_escape_string($connection, $_POST['title']);
                 $content = mysqli_real_escape_string($connection, $_POST['content']);
                 $announcement_type = mysqli_real_escape_string($connection, $_POST['announcement_type']);
-                $expiry_date = mysqli_real_escape_string($connection, $_POST['expiry_date']);
                 $status = mysqli_real_escape_string($connection, $_POST['status']);
 
                 $query = "UPDATE announcements 
                          SET title = '$title', content = '$content', 
                              announcement_type = '$announcement_type', 
-                             expiry_date = '$expiry_date', status = '$status', updated_at = NOW()
+                             status = '$status', 
+                             updated_at = NOW()
                          WHERE id = '$id'";
                 
                 if (mysqli_query($connection, $query)) {
@@ -102,8 +106,7 @@ $page = min(max(1, $page), $total_pages);
 $offset = ($page - 1) * $per_page;
 // --- end added
 
-$query = "SELECT a.*, u.full_name as created_by_name,
-          (SELECT COUNT(*) FROM community_volunteers WHERE announcement_id = a.id AND status = 'approved') as volunteer_count
+$query = "SELECT a.*, u.full_name as created_by_name
           FROM announcements a 
           LEFT JOIN users u ON a.created_by = u.id 
           WHERE 1=1";
@@ -142,9 +145,8 @@ if (isset($_GET['edit'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Announcements - Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <!-- Add SweetAlert2 CSS and JS -->
-    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
+    <!-- Add SweetAlert CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <style>
         * {
             margin: 0;
@@ -200,21 +202,17 @@ if (isset($_GET['edit'])) {
             padding: 1rem;
             background: rgba(255,255,255,0.1);
             border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
         }
 
         .user-name {
             font-weight: bold;
             font-size: 1rem;
-            color: #fff;
         }
 
         .user-role {
             font-size: 0.85rem;
+            opacity: 0.8;
             color: #3498db;
-            font-weight: 500;
         }
 
         .sidebar-nav {
@@ -1049,29 +1047,6 @@ if (isset($_GET['edit'])) {
             color: #964b00;
         }
 
-        .priority-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            display: inline-block;
-        }
-
-        .priority-low {
-            background: #d4edda;
-            color: #155724;
-        }
-
-        .priority-medium {
-            background: #fff3cd;
-            color: #856404;
-        }
-
-        .priority-high {
-            background: #f8d7da;
-            color: #721c24;
-        }
-
         .status-badge {
             padding: 0.25rem 0.75rem;
             border-radius: 15px;
@@ -1151,20 +1126,6 @@ if (isset($_GET['edit'])) {
             margin-bottom: 1rem;
         }
 
-        /* Event details section in form */
-        #eventDetailsSection {
-            border: 1px solid #e3e6f0;
-            border-radius: 8px;
-            padding: 1rem;
-            margin-top: 1rem;
-            background: #f8f9fc;
-            transition: all 0.3s ease;
-        }
-
-        #eventDetailsSection.hidden {
-            display: none;
-        }
-
         /* Modal Styles */
         .modal {
             display: none;
@@ -1173,10 +1134,23 @@ if (isset($_GET['edit'])) {
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.6);
             z-index: 1050;
             opacity: 0;
             transition: opacity 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 16px;
+            width: 95%;
+            max-width: 600px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            transform: translateY(-20px) scale(0.95);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .modal.active {
@@ -1186,114 +1160,133 @@ if (isset($_GET['edit'])) {
             justify-content: center;
         }
 
-        .modal-content {
-            background: white;
-            border-radius: 12px;
-            width: 95%;
-            max-width: 600px;
-            max-height: 90vh;
-            overflow-y: auto;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            transform: translateY(-20px);
-            transition: transform 0.3s ease;
-        }
-
         .modal.active .modal-content {
-            transform: translateY(0);
+            transform: translateY(0) scale(1);
         }
 
         .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem 1.5rem;
+            padding: 1.5rem;
             border-bottom: 1px solid #e5e7eb;
+            background: #f8fafc;
+            border-radius: 16px 16px 0 0;
         }
 
         .modal-title {
-            font-size: 1.25rem;
+            font-size: 1.5rem;
             font-weight: 600;
-            color: #333;
+            color: #1a202c;
         }
 
         .modal-close {
-            background: none;
+            position: absolute;
+            top: 1.25rem;
+            right: 1.25rem;
+            background: #f1f5f9;
             border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
             font-size: 1.25rem;
-            color: #666;
+            color: #64748b;
             cursor: pointer;
-            padding: 0.5rem;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .modal-close:hover {
-            color: #333;
+            background: #e2e8f0;
+            color: #1e293b;
+            transform: rotate(90deg);
         }
 
         .modal-body {
-            padding: 1.5rem;
+            padding: 2rem;
         }
 
+        /* Enhanced Form Styles */
         .form-group {
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
         }
 
         .form-group label {
             display: block;
             margin-bottom: 0.5rem;
-            font-weight: 500;
-            color: #444;
+            font-weight: 600;
+            color: #374151;
+            font-size: 0.95rem;
         }
 
-        .form-group textarea {
-            min-height: 100px;
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: all 0.2s ease;
+            background: #f8fafc;
+        }
+
+        .form-control:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            outline: none;
+        }
+
+        .form-control:hover {
+            border-color: #cbd5e1;
+        }
+
+        textarea.form-control {
+            min-height: 120px;
             resize: vertical;
         }
 
-        .form-actions {
-            display: flex;
-            gap: 1rem;
-            justify-content: flex-end;
-            margin-top: 2rem;
-        }
-
+        /* Enhanced Type Select */
         .type-select {
-            display: flex;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
             gap: 1rem;
             margin-top: 0.5rem;
         }
 
-        .type-option {
-            flex: 1;
-        }
-
         .type-label {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.75rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
+            padding: 1rem;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
             cursor: pointer;
             transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 500;
         }
 
         .type-label:hover {
+            border-color: #cbd5e1;
             background: #f8fafc;
         }
 
-        .type-option input[type="radio"] {
-            display: none;
-        }
-
         .type-option input[type="radio"]:checked + .type-label {
-            background: #e8f4fd;
-            border-color: #3498db;
-            color: #2d3748;
+            border-color: #3b82f6;
+            background: #eff6ff;
+            color: #1d4ed8;
         }
 
-        .type-label.general i { color: #3498db; }
-        .type-label.event i { color: #7b4397; }
-        .type-label.meeting i { color: #155724; }
+        .type-option input[type="radio"]:checked + .type-label i {
+            color: #3b82f6;
+        }
+
+        /* Form Actions */
+        .form-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+            margin-top: 2rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+        }
 
         /* Overlay for mobile */
         .sidebar-overlay {
@@ -1348,7 +1341,7 @@ if (isset($_GET['edit'])) {
                     <i class="fas fa-users"></i>
                     Resident Profiling
                 </a>
-                 <a href="resident_family.php" class="nav-item">
+                <a href="resident_family.php" class="nav-item">
                     <i class="fas fa-user-friends"></i>
                     Resident Family
                 </a>
@@ -1384,7 +1377,7 @@ if (isset($_GET['edit'])) {
                     Disaster Management
                 </a>
             </div>
-            <!-- Finance -->
+             <!-- Finance -->
             <div class="nav-section">
                 <div class="nav-section-title">Finance</div>
                 <a href="budgets.php" class="nav-item">
@@ -1399,12 +1392,10 @@ if (isset($_GET['edit'])) {
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
-                <a href="account_management.php" class="nav-item">
-                       <i class="fas fa-user-cog"></i>
-                Account Management
+               <a href="account_management.php" class="nav-item">
+                    <i class="fas fa-user-cog"></i>
+                    Account Management
                 </a>
-               
-				</a>
                 <a href="settings.php" class="nav-item">
                     <i class="fas fa-cog"></i>
                     Settings
@@ -1413,7 +1404,7 @@ if (isset($_GET['edit'])) {
         </div>
 
         <div class="logout-section">
-            <form action="../../employee/logout.php" method="POST" id="logoutForm" style="width: 100%;">
+            <form action="../logout.php" method="POST" id="logoutForm" style="width: 100%;">
                 <button type="button" class="logout-btn" onclick="handleLogout()">
                     <i class="fas fa-sign-out-alt"></i>
                     Logout
@@ -1442,29 +1433,41 @@ if (isset($_GET['edit'])) {
         <div class="content-area">
             <!-- Success/Error Messages -->
             <?php if (isset($_SESSION['success_message'])): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i>
-                    <?php 
-                        echo $_SESSION['success_message']; 
-                        unset($_SESSION['success_message']);
-                    ?>
-                    <button class="alert-close" onclick="this.parentElement.remove()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
+                <script>
+                    window.onload = function() {
+                        Swal.fire({
+                            icon: 'success',
+                            title: 'Success',
+                            text: '<?php echo addslashes($_SESSION['success_message']); ?>',
+                            timer: 2000,
+                            showConfirmButton: false
+                        });
+                        // Remove message from session to prevent repeat
+                        <?php unset($_SESSION['success_message']); ?>
+                        // Prevent form resubmission on refresh
+                        if (window.history.replaceState) {
+                            window.history.replaceState(null, null, window.location.href);
+                        }
+                    };
+                </script>
             <?php endif; ?>
 
             <?php if (isset($_SESSION['error_message'])): ?>
-                <div class="alert alert-error">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <?php 
-                        echo $_SESSION['error_message']; 
-                        unset($_SESSION['error_message']);
-                    ?>
-                    <button class="alert-close" onclick="this.parentElement.remove()">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
+                <script>
+                    window.onload = function() {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Error',
+                            text: '<?php echo addslashes($_SESSION['error_message']); ?>',
+                            timer: 2500,
+                            showConfirmButton: false
+                        });
+                        <?php unset($_SESSION['error_message']); ?>
+                        if (window.history.replaceState) {
+                            window.history.replaceState(null, null, window.location.href);
+                        }
+                    };
+                </script>
             <?php endif; ?>
 
             <!-- Action Header -->
@@ -1491,15 +1494,14 @@ if (isset($_GET['edit'])) {
                     </div>
                     <div class="filter-group">
                         <select id="type" name="type" class="form-control">
-                            <option value="">All</option>
+                            <option value="">All Types</option>
                             <option value="general" <?php echo $filter_type === 'general' ? 'selected' : ''; ?>>General</option>
-                            <option value="event" <?php echo $filter_type === 'event' ? 'selected' : ''; ?>>Event</option>
                             <option value="meeting" <?php echo $filter_type === 'meeting' ? 'selected' : ''; ?>>Meeting</option>
                         </select>
                     </div>
                     <div class="filter-group">
                         <select id="status" name="status" class="form-control">
-                            <option value="">All</option>
+                            <option value="">All Status</option>
                             <option value="active" <?php echo $filter_status === 'active' ? 'selected' : ''; ?>>Active</option>
                             <option value="inactive" <?php echo $filter_status === 'inactive' ? 'selected' : ''; ?>>Inactive</option>
                             <option value="expired" <?php echo $filter_status === 'expired' ? 'selected' : ''; ?>>Expired</option>
@@ -1518,19 +1520,25 @@ if (isset($_GET['edit'])) {
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>#</th>
                                 <th>Announcement</th>
                                 <th>Type</th>
+                                <th>Status</th>
+                                <th>Expiry Date</th>
+                                <th>Created By</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php 
-                            $counter = ($page - 1) * $per_page + 1;
-                            while ($announcement = mysqli_fetch_assoc($announcements)): 
-                            ?>
+                            <?php while ($announcement = mysqli_fetch_assoc($announcements)): ?>
+                                <?php
+                                    // Check if announcement is expired
+                                    if ($announcement['expiry_date'] && strtotime($announcement['expiry_date']) < time() && $announcement['status'] !== 'expired') {
+                                        $update_status = "UPDATE announcements SET status = 'expired' WHERE id = " . $announcement['id'];
+                                        mysqli_query($connection, $update_status);
+                                        $announcement['status'] = 'expired';
+                                    }
+                                ?>
                                 <tr>
-                                    <td><?php echo $counter++; ?></td>
                                     <td>
                                         <div class="announcement-title"><?php echo htmlspecialchars($announcement['title']); ?></div>
                                         <div class="announcement-content"><?php echo htmlspecialchars($announcement['content']); ?></div>
@@ -1554,6 +1562,19 @@ if (isset($_GET['edit'])) {
                                             <i class="fas <?php echo $icon; ?>"></i>
                                             <?php echo ucfirst($type); ?>
                                         </span>
+                                    </td>
+                                    <td>
+                                        <span class="status-badge status-<?php echo $announcement['status']; ?>">
+                                            <?php echo ucfirst($announcement['status']); ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <?php echo $announcement['expiry_date'] ? date('M j, Y', strtotime($announcement['expiry_date'])) : 'No expiry'; ?>
+                                    </td>
+                                    <td>
+                                        <?php echo htmlspecialchars($announcement['created_by_name'] ?? 'Unknown'); ?>
+                                        <br>
+                                        <small style="color: #666;"><?php echo date('M j, Y', strtotime($announcement['created_at'])); ?></small>
                                     </td>
                                     <td>
                                         <div class="table-actions">
@@ -1634,7 +1655,10 @@ if (isset($_GET['edit'])) {
                     <input type="hidden" name="id" id="announcementId">
 
                     <div class="form-group">
-                        <label for="title">Title <span style="color: red;">*</span></label>
+                        <label for="title">
+                            <i class="fas fa-heading"></i> 
+                            Title <span style="color: #ef4444;">*</span>
+                        </label>
                         <input type="text" 
                                id="title" 
                                name="title" 
@@ -1644,7 +1668,10 @@ if (isset($_GET['edit'])) {
                     </div>
 
                     <div class="form-group">
-                        <label for="content">Content <span style="color: red;">*</span></label>
+                        <label for="content">
+                            <i class="fas fa-align-left"></i> 
+                            Content <span style="color: #ef4444;">*</span>
+                        </label>
                         <textarea id="content" 
                                   name="content" 
                                   class="form-control" 
@@ -1653,97 +1680,43 @@ if (isset($_GET['edit'])) {
                     </div>
 
                     <div class="form-group">
-                        <label>Type <span style="color: red;">*</span></label>
+                        <label>
+                            <i class="fas fa-tag"></i> 
+                            Announcement Type <span style="color: #ef4444;">*</span>
+                        </label>
                         <div class="type-select">
                             <div class="type-option">
-                                <input type="radio" id="type_general" name="announcement_type" value="general" checked onchange="toggleEventDetails()">
-                                <label for="type_general" class="type-label general">
-                                    <i class="fas fa-info-circle"></i> General
+                                <input type="radio" id="type_general" name="announcement_type" value="general" checked>
+                                <label for="type_general" class="type-label">
+                                    <i class="fas fa-info-circle"></i>
+                                    General
                                 </label>
                             </div>
                             <div class="type-option">
-                                <input type="radio" id="type_event" name="announcement_type" value="event" onchange="toggleEventDetails()">
-                                <label for="type_event" class="type-label event">
-                                    <i class="fas fa-calendar-check"></i> Event
+                                <input type="radio" id="type_meeting" name="announcement_type" value="meeting">
+                                <label for="type_meeting" class="type-label">
+                                    <i class="fas fa-users"></i>
+                                    Meeting
                                 </label>
-                            </div>
-                            <div class="type-option">
-                                <input type="radio" id="type_meeting" name="announcement_type" value="meeting" onchange="toggleEventDetails()">
-                                <label for="type_meeting" class="type-label meeting">
-                                    <i class="fas fa-users"></i> Meeting
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="eventDetailsSection" class="hidden">
-                        <h4 style="margin-bottom: 1rem; color: #555;">
-                            <i class="fas fa-calendar-alt"></i> Event/Meeting Details
-                        </h4>
-                        
-                        <div class="form-group">
-                            <label for="event_date">Date</label>
-                            <input type="date" 
-                                   id="event_date" 
-                                   name="event_date" 
-                                   class="form-control">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="event_time">Time</label>
-                            <input type="time" 
-                                   id="event_time" 
-                                   name="event_time" 
-                                   class="form-control">
-                        </div>
-
-                        <div class="form-group">
-                            <label for="location">Location</label>
-                            <input type="text" 
-                                   id="location" 
-                                   name="location" 
-                                   class="form-control" 
-                                   placeholder="Enter location">
-                        </div>
-                        
-                        <div class="volunteer-options hidden" id="volunteerOptions">
-                            <h5 style="margin-bottom: 1rem; color: #555;">
-                                <i class="fas fa-hands-helping"></i> Volunteer Settings
-                            </h5>
-                            
-                            <div class="checkbox-group">
-                                <input type="checkbox" 
-                                       id="needs_volunteers" 
-                                       name="needs_volunteers" 
-                                       value="1"
-                                       onchange="toggleMaxVolunteers()">
-                                <label for="needs_volunteers">This event needs volunteers</label>
-                            </div>
-                            
-                            <div class="form-group hidden" id="maxVolunteersGroup">
-                                <label for="max_volunteers">Maximum Number of Volunteers (Optional)</label>
-                                <input type="number" 
-                                       id="max_volunteers" 
-                                       name="max_volunteers" 
-                                       class="form-control" 
-                                       placeholder="Leave empty for unlimited"
-                                       min="1">
-                                <small style="color: #666;">Leave empty to allow unlimited volunteers</small>
                             </div>
                         </div>
                     </div>
 
                     <div class="form-group">
-                        <label for="expiry_date">Expiry Date</label>
-                        <input type="date" 
-                               id="expiry_date" 
-                               name="expiry_date" 
-                               class="form-control"
-                               min="<?php echo date('Y-m-d'); ?>">
+                        <label>
+                            <i class="fas fa-calendar-alt"></i> 
+                            Expiry Period
+                        </label>
+                        <p style="color: #6b7280; margin-top: 0.5rem;">
+                            All announcements automatically expire after 1 week from creation date.
+                        </p>
                     </div>
 
                     <div class="form-group" id="statusGroup" style="display: none;">
-                        <label for="status">Status</label>
+                        <label for="status">
+                            <i class="fas fa-toggle-on"></i> 
+                            Status
+                        </label>
                         <select id="status" name="status" class="form-control">
                             <option value="active">Active</option>
                             <option value="inactive">Inactive</option>
@@ -1752,6 +1725,7 @@ if (isset($_GET['edit'])) {
 
                     <div class="form-actions">
                         <button type="button" class="btn btn-secondary" onclick="closeModal()">
+                            <i class="fas fa-times"></i>
                             Cancel
                         </button>
                         <button type="submit" class="btn btn-primary">
@@ -1778,58 +1752,18 @@ if (isset($_GET['edit'])) {
         function handleLogout() {
             Swal.fire({
                 title: 'Logout Confirmation',
-                text: 'Are you sure you want to logout?',
+                text: "Are you sure you want to logout?",
                 icon: 'question',
                 showCancelButton: true,
+                confirmButtonColor: '#3085d6',
+                cancelButtonColor: '#d33',
                 confirmButtonText: 'Yes, logout',
-                cancelButtonText: 'Cancel',
-                confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
+                cancelButtonText: 'Cancel'
             }).then((result) => {
                 if (result.isConfirmed) {
                     document.getElementById('logoutForm').submit();
                 }
             });
-        }
-
-        // Toggle event details section
-        function toggleEventDetails() {
-            const eventDetailsSection = document.getElementById('eventDetailsSection');
-            const volunteerOptions = document.getElementById('volunteerOptions');
-            const selectedType = document.querySelector('input[name="announcement_type"]:checked').value;
-            
-            if (selectedType === 'event' || selectedType === 'meeting') {
-                eventDetailsSection.classList.remove('hidden');
-                if (selectedType === 'event') {
-                    volunteerOptions.classList.remove('hidden');
-                } else {
-                    volunteerOptions.classList.add('hidden');
-                    document.getElementById('needs_volunteers').checked = false;
-                    toggleMaxVolunteers();
-                }
-            } else {
-                eventDetailsSection.classList.add('hidden');
-                volunteerOptions.classList.add('hidden');
-                // Clear event fields when not needed
-                document.getElementById('event_date').value = '';
-                document.getElementById('event_time').value = '';
-                document.getElementById('location').value = '';
-                document.getElementById('needs_volunteers').checked = false;
-                toggleMaxVolunteers();
-            }
-        }
-
-        // Toggle max volunteers field
-        function toggleMaxVolunteers() {
-            const maxVolunteersGroup = document.getElementById('maxVolunteersGroup');
-            const needsVolunteers = document.getElementById('needs_volunteers').checked;
-            
-            if (needsVolunteers) {
-                maxVolunteersGroup.classList.remove('hidden');
-            } else {
-                maxVolunteersGroup.classList.add('hidden');
-                document.getElementById('max_volunteers').value = '';
-            }
         }
 
         // Modal functions
@@ -1843,8 +1777,6 @@ if (isset($_GET['edit'])) {
 
             // Reset form
             form.reset();
-            toggleEventDetails(); // Reset event details visibility
-            toggleMaxVolunteers(); // Reset volunteer options
 
             if (mode === 'create') {
                 modalTitle.textContent = 'Create Announcement';
@@ -1890,25 +1822,7 @@ if (isset($_GET['edit'])) {
             <?php $ann_type = $edit_announcement['announcement_type'] ?? 'general'; ?>
             document.getElementById('type_<?php echo $ann_type; ?>').checked = true;
             
-            // Set event details
-            document.getElementById('event_date').value = '<?php echo $edit_announcement['event_date']; ?>';
-            document.getElementById('event_time').value = '<?php echo $edit_announcement['event_time']; ?>';
-            document.getElementById('location').value = '<?php echo addslashes($edit_announcement['location']); ?>';
-            
-            // Set volunteer options
-            <?php if ($edit_announcement['needs_volunteers']): ?>
-                document.getElementById('needs_volunteers').checked = true;
-                <?php if ($edit_announcement['max_volunteers']): ?>
-                    document.getElementById('max_volunteers').value = '<?php echo $edit_announcement['max_volunteers']; ?>';
-                <?php endif; ?>
-            <?php endif; ?>
-            
-            document.getElementById('expiry_date').value = '<?php echo $edit_announcement['expiry_date']; ?>';
             document.getElementById('status').value = '<?php echo $edit_announcement['status']; ?>';
-
-            // Show/hide event details based on type
-            toggleEventDetails();
-            toggleMaxVolunteers();
 
             modal.classList.add('active');
         };

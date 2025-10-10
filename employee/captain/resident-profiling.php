@@ -2,6 +2,11 @@
 session_start();
 require_once '../../config.php';
 
+// Load and clear flash messages (so they survive a redirect once)
+$success_message = $_SESSION['success_message'] ?? null;
+$error_message = $_SESSION['error_message'] ?? null;
+unset($_SESSION['success_message'], $_SESSION['error_message']);
+
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'captain') {
     header("Location: ../index.php");
     exit();
@@ -19,30 +24,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // add_resident handling: after reading inputs
         if ($_POST['action'] === 'add_resident') {
             $existing_id = intval($_POST['existing_resident_id'] ?? 0); // NEW: optional existing resident id
-            $first_name = mysqli_real_escape_string($connection, $_POST['first_name']);
-            $middle_initial = mysqli_real_escape_string($connection, $_POST['middle_initial']);
-            $last_name = mysqli_real_escape_string($connection, $_POST['last_name']);
-            // Normalize contact and age
-            $age = intval($_POST['age']);
-            $contact_number = mysqli_real_escape_string($connection, $_POST['contact_number']);
-            // Normalize contact to digits only and validate: must be 11 digits and start with 09
-            $contact_number = preg_replace('/\D/', '', $contact_number);
-            if (!preg_match('/^09\d{9}$/', $contact_number)) {
-                $error_message = "Contact number must be 11 digits and start with 09.";
-            } else {
-                // proceed only when contact is valid
-                // Suffix (optional)
-                $suffix = isset($_POST['suffix']) ? mysqli_real_escape_string($connection, trim($_POST['suffix'])) : null;
-                // Set default zone if empty/null
-                $zone = !empty($_POST['zone']) ? mysqli_real_escape_string($connection, $_POST['zone']) : 'Zone 1A';
+            // Normalize and sanitize name inputs
+            $raw_first = trim((string)($_POST['first_name'] ?? ''));
+            $raw_middle = trim((string)($_POST['middle_initial'] ?? ''));
+            $raw_last = trim((string)($_POST['last_name'] ?? ''));
 
-                // Create full name (append suffix if provided)
+            // Capitalize first letter, keep rest lower-case
+            $first_name = mysqli_real_escape_string($connection, $raw_first !== '' ? ucfirst(mb_strtolower($raw_first)) : '');
+            $last_name = mysqli_real_escape_string($connection, $raw_last !== '' ? ucfirst(mb_strtolower($raw_last)) : '');
+
+            // Middle initial: keep a single uppercase letter (store without dot)
+            $mi_char = '';
+            if ($raw_middle !== '') {
+                $clean = preg_replace('/[^A-Za-z]/', '', $raw_middle);
+                if ($clean !== '') $mi_char = strtoupper(substr($clean, 0, 1));
+            }
+            $middle_initial = mysqli_real_escape_string($connection, $mi_char);
+             // Normalize contact and age
+             $age = intval($_POST['age']);
+             $contact_number = mysqli_real_escape_string($connection, $_POST['contact_number']);
+             // Normalize contact to digits only and validate: must be 11 digits and start with 09
+             $contact_number = preg_replace('/\D/', '', $contact_number);
+             // JS will handle contact number validation and show SweetAlert, so skip PHP-side error here
+             if (!preg_match('/^09\d{9}$/', $contact_number)) {
+                 // Optionally, you can still block on server for security, but don't set error_message or redirect
+                 exit();
+             } else {
+                 // proceed only when contact is valid
+                 // Suffix (optional)
+                 $suffix = isset($_POST['suffix']) ? mysqli_real_escape_string($connection, trim($_POST['suffix'])) : null;
+                 // Set default zone if empty/null
+                 $zone = !empty($_POST['zone']) ? mysqli_real_escape_string($connection, $_POST['zone']) : 'Zone 1A';
+
+                 // Create full name (append suffix if provided)
                 $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
-                if (!empty($suffix)) {
-                    $full_name .= ' ' . $suffix;
-                }
+                 if (!empty($suffix)) {
+                     $full_name .= ' ' . $suffix;
+                 }
 
-                // Handle photo upload and face data
+                 // Handle photo upload and face data
                 $photo_path = null;
                 $face_descriptor = null;
 
@@ -64,10 +84,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Get face descriptor if provided
                 if (!empty($_POST['face_descriptor'])) {
-                    $face_descriptor = mysqli_real_escape_string($connection, $_POST['face_descriptor']);
+                    $face_descriptor = $_POST['face_descriptor']; // keep raw JSON string for storage
                 }
 
-                // If existing resident ID provided, update that resident instead of inserting new
+                // NEW: Server-side duplicate detection to prevent profiling duplication
+                // Check by contact_number or exact full_name (case-insensitive). If face_descriptor is provided,
+                // compute Euclidean distance against stored descriptors and treat as duplicate when distance < 0.6.
+                if ($existing_id === 0) { // only auto-detect when user didn't already indicate an existing resident
+                    $safe_full_lower = mysqli_real_escape_string($connection, mb_strtolower($full_name));
+                    $dup_sql = "SELECT id, full_name, contact_number, face_descriptor, photo_path FROM residents 
+                                WHERE contact_number = '$contact_number' OR LOWER(full_name) = '$safe_full_lower' LIMIT 1";
+                    $dup_res = mysqli_query($connection, $dup_sql);
+                    if ($dup_res && ($dup_row = mysqli_fetch_assoc($dup_res))) {
+                        $found_id = (int)$dup_row['id'];
+                        $is_duplicate = false;
+
+                        // If both descriptors exist, attempt numeric distance check
+                        if (!empty($face_descriptor) && !empty($dup_row['face_descriptor'])) {
+                            // try to parse descriptors into arrays
+                            $incoming = json_decode($face_descriptor, true);
+                            $stored  = json_decode($dup_row['face_descriptor'], true);
+                            if (is_array($incoming) && is_array($stored) && count($incoming) === count($stored)) {
+                                // compute euclidean distance
+                                $sum = 0.0;
+                                for ($i = 0, $n = count($incoming); $i < $n; $i++) {
+                                    $d = floatval($incoming[$i]) - floatval($stored[$i]);
+                                    $sum += $d * $d;
+                                }
+                                $distance = sqrt($sum);
+                                // threshold 0.6 (tune as needed)
+                                if ($distance < 0.6) {
+                                    $is_duplicate = true;
+                                }
+                            }
+                        }
+
+                        // If we don't have descriptors but contact/fullname matched, treat as duplicate
+                        if (!$is_duplicate) {
+                            if ($dup_row['contact_number'] === $contact_number) {
+                                $is_duplicate = true;
+                            } elseif (mb_strtolower($dup_row['full_name']) === mb_strtolower($full_name)) {
+                                $is_duplicate = true;
+                            }
+                        }
+
+                        if ($is_duplicate) {
+                            // Route to update existing resident (re-use update path below by setting $existing_id)
+                            $existing_id = $found_id;
+                            // Optionally notify user via session; update logic will perform the update and redirect.
+                            $_SESSION['success_message'] = "An existing resident was detected and will be updated instead of creating a duplicate.";
+                        }
+                    }
+                }
+
+                // If existing resident ID provided (or auto-detected), update that resident instead of inserting new
                 if ($existing_id > 0) {
                     // Build update query; set suffix = NULL and status = NULL as requested.
                     $update_parts = [];
@@ -84,7 +154,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     if ($face_descriptor) {
-                        $update_parts[] = "face_descriptor = '$face_descriptor'";
+                        $fd_safe = mysqli_real_escape_string($connection, $face_descriptor);
+                        $update_parts[] = "face_descriptor = '$fd_safe'";
                     }
 
                     // include suffix column properly (allow NULL)
@@ -100,41 +171,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $update_query = "UPDATE residents SET " . implode(', ', $update_parts) . ", updated_at = CURRENT_TIMESTAMP WHERE id = $existing_id";
 
                     if (mysqli_query($connection, $update_query)) {
-                        $success_message = "Existing resident updated and face data linked successfully.";
+                        $_SESSION['success_message'] = "Existing resident updated and face data linked successfully.";
+                        header("Location: resident-profiling.php");
+                        exit();
                     } else {
-                        $error_message = "Error updating existing resident: " . mysqli_error($connection);
+                        $_SESSION['error_message'] = "Error updating existing resident: " . mysqli_error($connection);
+                        header("Location: resident-profiling.php");
+                        exit();
                     }
                 } else {
-                    // Regular insert when no existing resident id
+                    // Regular insert when no existing resident id detected
+                    $fd_safe_insert = $face_descriptor ? ("'" . mysqli_real_escape_string($connection, $face_descriptor) . "'") : "NULL";
+                    $photo_insert = $photo_path ? ("'" . mysqli_real_escape_string($connection, $photo_path) . "'") : "NULL";
+
                     $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, suffix, age, contact_number, zone, photo_path, face_descriptor) 
-                                   VALUES ('$first_name', '$middle_initial', '$last_name', '$full_name', " . 
+                                   VALUES ('$first_name', " . ($middle_initial !== '' ? "'$middle_initial'" : "NULL") . ", '$last_name', '$full_name', " . 
                                    ($suffix ? "'$suffix'" : "NULL") . ", $age, '$contact_number', '$zone', " . 
-                                   ($photo_path ? "'$photo_path'" : "NULL") . ", " .
-                                   ($face_descriptor ? "'$face_descriptor'" : "NULL") . ")";
+                                   $photo_insert . ", " .
+                                   $fd_safe_insert . ")";
 
                     if (mysqli_query($connection, $insert_query)) {
-                        $success_message = "Resident added successfully with face data!";
+                        $_SESSION['success_message'] = "Resident added successfully with face data!";
+                        header("Location: resident-profiling.php");
+                        exit();
                     } else {
-                        $error_message = "Error adding resident: " . mysqli_error($connection);
+                        $_SESSION['error_message'] = "Error adding resident: " . mysqli_error($connection);
+                        header("Location: resident-profiling.php");
+                        exit();
                     }
                 }
             }
         } elseif ($_POST['action'] === 'update_resident') {
             $id = intval($_POST['resident_id']);
-            $first_name = mysqli_real_escape_string($connection, $_POST['first_name']);
-            $middle_initial = mysqli_real_escape_string($connection, $_POST['middle_initial']);
-            $last_name = mysqli_real_escape_string($connection, $_POST['last_name']);
+            // Normalize and sanitize name inputs for update
+            $raw_first = trim((string)($_POST['first_name'] ?? ''));
+            $raw_middle = trim((string)($_POST['middle_initial'] ?? ''));
+            $raw_last = trim((string)($_POST['last_name'] ?? ''));
+            $first_name = mysqli_real_escape_string($connection, $raw_first !== '' ? ucfirst(mb_strtolower($raw_first)) : '');
+            $last_name = mysqli_real_escape_string($connection, $raw_last !== '' ? ucfirst(mb_strtolower($raw_last)) : '');
+            $mi_char = '';
+            if ($raw_middle !== '') {
+                $clean = preg_replace('/[^A-Za-z]/', '', $raw_middle);
+                if ($clean !== '') $mi_char = strtoupper(substr($clean, 0, 1));
+            }
+            $middle_initial = mysqli_real_escape_string($connection, $mi_char);
             $age = intval($_POST['age']);
             $contact_number = mysqli_real_escape_string($connection, $_POST['contact_number']);
-            // Normalize contact to digits only and validate: must be 11 digits and start with 09
-            $contact_number = preg_replace('/\D/', '', $contact_number);
-            if (!preg_match('/^09\d{9}$/', $contact_number)) {
-                $error_message = "Contact number must be 11 digits and start with 09.";
-            } else {
-                // Suffix (optional)
-                $suffix = isset($_POST['suffix']) ? mysqli_real_escape_string($connection, trim($_POST['suffix'])) : null;
-                // Set default zone if empty/null 
-                $zone = !empty($_POST['zone']) ? mysqli_real_escape_string($connection, $_POST['zone']) : 'Zone 1A';
+             // Normalize contact to digits only and validate: must be 11 digits and start with 09
+             $contact_number = preg_replace('/\D/', '', $contact_number);
+             // JS will handle contact number validation and show SweetAlert, so skip PHP-side error here
+             if (!preg_match('/^09\d{9}$/', $contact_number)) {
+                 exit();
+             } else {
+                 // Suffix (optional)
+                 $suffix = isset($_POST['suffix']) ? mysqli_real_escape_string($connection, trim($_POST['suffix'])) : null;
+                 // Set default zone if empty/null 
+                 $zone = !empty($_POST['zone']) ? mysqli_real_escape_string($connection, $_POST['zone']) : 'Zone 1A';
                 
                 // Create full name including suffix
                 $full_name = $first_name . ' ' . ($middle_initial ? $middle_initial . '. ' : '') . $last_name;
@@ -196,9 +288,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                WHERE id = $id";
                 
                 if (mysqli_query($connection, $update_query)) {
-                    $success_message = "Resident updated successfully!";
+                    $_SESSION['success_message'] = "Resident updated successfully!";
+                    header("Location: resident-profiling.php");
+                    exit();
                 } else {
-                    $error_message = "Error updating resident: " . mysqli_error($connection);
+                    $_SESSION['error_message'] = "Error updating resident: " . mysqli_error($connection);
+                    header("Location: resident-profiling.php");
+                    exit();
                 }
             }
         } elseif ($_POST['action'] === 'delete_resident') {
@@ -216,9 +312,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $delete_query = "DELETE FROM residents WHERE id = $id";
             
             if (mysqli_query($connection, $delete_query)) {
-                $success_message = "Resident deleted successfully!";
+                $_SESSION['success_message'] = "Resident deleted successfully!";
+                header("Location: resident-profiling.php");
+                exit();
             } else {
-                $error_message = "Error deleting resident: " . mysqli_error($connection);
+                $_SESSION['error_message'] = "Error deleting resident: " . mysqli_error($connection);
+                header("Location: resident-profiling.php");
+                exit();
             }
         } elseif ($_POST['action'] === 'search_face') {
             // Handle face search
@@ -409,7 +509,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resident Profiling with Advanced Face Recognition - Barangay Management System</title>
+    <title>Resident Profiling with Advanced Face Recognition - Cawit Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     
     <!-- Face API -->
@@ -1399,7 +1499,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
         <div class="sidebar-header">
             <div class="sidebar-brand">
                 <i class="fas fa-building"></i>
-                Barangay Management
+                Cawit Barangay Management
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
@@ -1458,6 +1558,18 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     Disaster Management
                 </a>
             </div>
+            <!-- Finance -->
+            <div class="nav-section">
+                <div class="nav-section-title">Finance</div>
+                <a href="budgets.php" class="nav-item">
+                    <i class="fas fa-wallet"></i>
+                    Budgets
+                </a>
+                <a href="expenses.php" class="nav-item">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    Expenses
+                </a>
+            </div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
@@ -1498,14 +1610,14 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 
         <div class="content-area">
             <!-- Alert Messages -->
-            <?php if (isset($success_message)): ?>
+            <?php if ($success_message): ?>
                 <div class="alert alert-success">
                     <i class="fas fa-check-circle"></i>
                     <?php echo $success_message; ?>
                 </div>
             <?php endif; ?>
 
-            <?php if (isset($error_message)): ?>
+            <?php if ($error_message): ?>
                 <div class="alert alert-error">
                     <i class="fas fa-exclamation-circle"></i>
                     <?php echo $error_message; ?>
@@ -2870,240 +2982,114 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
         });
 
         // Form validation
-        document.getElementById('createForm').addEventListener('submit', function(e) {
-            const firstName = document.getElementById('first_name').value.trim();
-            const lastName = document.getElementById('last_name').value.trim();
-            const age = document.getElementById('age').value;
-            const contactNumber = document.getElementById('contact_number').value.trim();
-            const photoData = document.getElementById('photo_data').value;
-            const faceDescriptor = document.getElementById('face_descriptor').value;
+    document.getElementById('createForm').addEventListener('submit', function(e) {
+        const firstName = document.getElementById('first_name').value.trim();
+        const lastName = document.getElementById('last_name').value.trim();
+        const age = document.getElementById('age').value;
+        const contactNumber = document.getElementById('contact_number').value.trim();
+        const photoData = document.getElementById('photo_data').value;
+        const faceDescriptor = document.getElementById('face_descriptor').value;
 
-            if (!firstName || !lastName || !age || !contactNumber) {
-                e.preventDefault();
-                alert('Please fill in all required fields.');
-                return false;
-            }
+        if (!firstName || !lastName || !age || !contactNumber) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Missing Fields',
+                text: 'Please fill in all required fields.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            closeModal('createModal');
+            return false;
+        }
 
-            if (!photoData || !faceDescriptor) {
-                e.preventDefault();
-                alert('Please capture a photo with face detection before submitting.');
-                return false;
-            }
+        if (!photoData || !faceDescriptor) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Photo Required',
+                text: 'Please capture a photo with face detection before submitting.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            closeModal('createModal');
+            return false;
+        }
 
-            if (age < 1 || age > 120) {
-                e.preventDefault();
-                alert('Please enter a valid age between 1 and 120.');
-                return false;
-            }
-        });
+        if (age < 1 || age > 120) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid Age',
+                text: 'Please enter a valid age between 1 and 120.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            closeModal('createModal');
+            return false;
+        }
 
-        document.getElementById('editForm').addEventListener('submit', function(e) {
-            const firstName = document.getElementById('edit_first_name').value.trim();
-            const lastName = document.getElementById('edit_last_name').value.trim();
-            const age = document.getElementById('edit_age').value;
-            const contactNumber = document.getElementById('edit_contact_number').value.trim();
+        if (!/^09\d{9}$/.test(contactNumber)) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid Contact Number',
+                text: 'Contact number must be 11 digits and start with 09.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            closeModal('createModal');
+            return false;
+        }
+    });
 
-            if (!firstName || !lastName || !age || !contactNumber) {
-                e.preventDefault();
-                alert('Please fill in all required fields.');
-                return false;
-            }
+    document.getElementById('editForm').addEventListener('submit', function(e) {
+        const firstName = document.getElementById('edit_first_name').value.trim();
+        const lastName = document.getElementById('edit_last_name').value.trim();
+        const age = document.getElementById('edit_age').value;
+        const contactNumber = document.getElementById('edit_contact_number').value.trim();
 
-            if (age < 1 || age > 120) {
-                e.preventDefault();
-                alert('Please enter a valid age between 1 and 120.');
-                return false;
-            }
-        });
+        if (!firstName || !lastName || !age || !contactNumber) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Missing Fields',
+                text: 'Please fill in all required fields.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            closeModal('editModal');
+            return false;
+        }
 
-        // Clean up resources when page is unloaded
-        window.addEventListener('beforeunload', function() {
-            stopCamera();
-            stopEditCamera();
-            stopSearchCamera();
-        });
+        if (age < 1 || age > 120) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid Age',
+                text: 'Please enter a valid age between 1 and 120.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            closeModal('editModal');
+            return false;
+        }
 
-        // Debug function (call from console: debugFaceDetection())
-        window.debugFaceDetection = function() {
-            console.log('=== Face Detection Debug Info ===');
-            console.log('Models loaded:', modelsLoaded);
-            console.log('Face detected:', faceDetected);
-            console.log('Smile detected:', smileDetected);
-            console.log('Is capturing:', isCapturing);
-            console.log('Current face descriptor:', currentFaceDescriptor ? 'Present' : 'None');
-            console.log('Detection interval active:', faceDetectionInterval ? 'Yes' : 'No');
-            
-            const video = document.getElementById('videoElement');
-            if (video) {
-                console.log('Video ready state:', video.readyState);
-                console.log('Video dimensions:', video.videoWidth, 'x', video.videoHeight);
-                console.log('Video src object:', video.srcObject ? 'Present' : 'None');
-                console.log('Video playing:', !video.paused);
-            }
-            
-            // Test if face-api is available
-            console.log('FaceAPI available:', typeof faceapi !== 'undefined');
-            if (typeof faceapi !== 'undefined') {
-                console.log('TinyFaceDetector loaded:', faceapi.nets.tinyFaceDetector.isLoaded);
-                console.log('FaceLandmark68Net loaded:', faceapi.nets.faceLandmark68Net.isLoaded);
-                console.log('FaceRecognitionNet loaded:', faceapi.nets.faceRecognitionNet.isLoaded);
-                console.log('FaceExpressionNet loaded:', faceapi.nets.faceExpressionNet.isLoaded);
-            }
-            
-            console.log('=== End Debug Info ===');
-        };
-        
-        // Add a simple face detection test function
-        window.testFaceDetection = async function() {
-            const video = document.getElementById('videoElement');
-            if (!video || !video.srcObject) {
-                console.log('Video not ready. Start camera first.');
-                return;
-            }
-            
-            console.log('Testing face detection...');
-            try {
-                const result = await detectFace(video, 'faceCanvas', 'face-status', null, 'faceIndicator', 'create');
-                console.log('Test result:', result ? 'Face detected' : 'No face detected');
-            } catch (error) {
-                console.error('Test failed:', error);
-            }
-        };
+        if (!/^09\d{9}$/.test(contactNumber)) {
+            e.preventDefault();
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid Contact Number',
+                text: 'Contact number must be 11 digits and start with 09.',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            closeModal('editModal');
+            return false;
+        }
+    });
 
-        document.addEventListener('DOMContentLoaded', function() {
-		// Existing DOMContentLoaded handlers...
-		// Attach input restrictions for name fields (create + edit)
-		const letterOnlyFields = [
-			'first_name','last_name','suffix',
-			'edit_first_name','edit_last_name','edit_suffix'
-		];
-		const singleLetterFields = ['middle_initial','edit_middle_initial'];
-
-		// Prevent typing digits (key press) and strip digits on input/paste
-		letterOnlyFields.forEach(id => {
-			const el = document.getElementById(id);
-			if (!el) return;
-			// Prevent numeric key input
-			el.addEventListener('keypress', function(e){
-				// allow control keys
-				if (e.ctrlKey || e.metaKey || e.altKey) return;
-				// block digits
-				if (/\d/.test(String.fromCharCode(e.which || e.keyCode))) {
-					e.preventDefault();
-				}
-			});
-			// Sanitize on input (handles paste)
-			el.addEventListener('input', function(){
-				const cursor = el.selectionStart;
-				el.value = el.value.replace(/[0-9]/g,'');
-				// restore cursor (best-effort)
-				try { el.selectionStart = el.selectionEnd = cursor; } catch(e){}
-			});
-			// Prevent paste of numbers
-			el.addEventListener('paste', function(e){
-				const paste = (e.clipboardData || window.clipboardData).getData('text');
-				if (/\d/.test(paste)) {
-					e.preventDefault();
-					// paste cleaned text
-					const cleaned = paste.replace(/[0-9]/g,'');
-					document.execCommand('insertText', false, cleaned);
-				}
-			});
-		});
-
-		// Middle initial: single letter only
-		singleLetterFields.forEach(id => {
-			const el = document.getElementById(id);
-			if (!el) return;
-			el.addEventListener('keypress', function(e){
-				if (e.ctrlKey || e.metaKey || e.altKey) return;
-				const ch = String.fromCharCode(e.which || e.keyCode);
-				if (!/^[A-Za-z]$/.test(ch)) {
-					e.preventDefault();
-				}
-				// prevent typing more than 1 character
-				if (el.value.length >= 1 && !el.selectionStart !== el.selectionEnd) {
-					e.preventDefault();
-				}
-			});
-			el.addEventListener('input', function(){
-				// keep only first letter and strip non-letters
-				el.value = el.value.replace(/[^A-Za-z]/g,'').slice(0,1);
-			});
-			el.addEventListener('paste', function(e){
-				const paste = (e.clipboardData || window.clipboardData).getData('text');
-				const cleaned = paste.replace(/[^A-Za-z]/g,'').slice(0,1);
-				e.preventDefault();
-				document.execCommand('insertText', false, cleaned);
-			});
-		});
-
-		// NEW: Digit-only enforcement for age fields (create + edit)
-		const digitOnlyFields = ['age','edit_age','contact_number','edit_contact_number'];
-		digitOnlyFields.forEach(id => {
-			const el = document.getElementById(id);
-			if (!el) return;
-
-			// Use keydown to allow navigation/control keys and block non-digits
-			el.addEventListener('keydown', function(e) {
-				// Allow: control combos, navigation, backspace, delete, tab
-				if (e.ctrlKey || e.metaKey || e.altKey) return;
-				const allowedKeys = ['Backspace','Delete','ArrowLeft','ArrowRight','Tab'];
-				if (allowedKeys.includes(e.key)) return;
-				// If key is not a single digit, prevent it
-				if (!/^\d$/.test(e.key)) {
-					e.preventDefault();
-				}
-			});
-
-			// Sanitize input (handles paste and non-keyboard input)
-			el.addEventListener('input', function() {
-				const cursor = el.selectionStart;
-				// remove any non-digit characters
-				const cleaned = el.value.replace(/\D/g,'');
-				if (el.value !== cleaned) {
-					el.value = cleaned;
-					try { el.selectionStart = el.selectionEnd = cursor - 1; } catch(e){}
-				}
-			});
-
-			// Clean pasted content
-			el.addEventListener('paste', function(e) {
-				const paste = (e.clipboardData || window.clipboardData).getData('text');
-				if (/\D/.test(paste)) {
-					e.preventDefault();
-					const cleaned = paste.replace(/\D/g,'');
-					document.execCommand('insertText', false, cleaned);
-				}
-			});
-		});
-
-		// Add contact format check on submit (create)
-		const createForm = document.getElementById('createForm');
-		if (createForm) {
-			createForm.addEventListener('submit', function(e) {
-				const contact = document.getElementById('contact_number').value.trim();
-				if (!/^09\d{9}$/.test(contact)) {
-					e.preventDefault();
-					alert('Contact number must be 11 digits and start with 09.');
-					return false;
-				}
-			});
-		}
-
-		// Add contact format check on submit (edit)
-		const editForm = document.getElementById('editForm');
-		if (editForm) {
-			editForm.addEventListener('submit', function(e) {
-				const contact = document.getElementById('edit_contact_number').value.trim();
-				if (!/^09\d{9}$/.test(contact)) {
-					e.preventDefault();
-					alert('Contact number must be 11 digits and start with 09.');
-					return false;
-				}
-			});
-		}
-	});
+    // ...existing code...
     </script>
 </body>
 </html>

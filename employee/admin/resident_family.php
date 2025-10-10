@@ -22,9 +22,10 @@ if (!file_exists($upload_dir)) {
 
 // Initialize pagination variables
 $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+// Use a single variable for page size (10 items per page)
 $records_per_page = 10;
 // ensure integers and avoid TypeError when multiplying
-$offset = max(0, ((int)$page - 1) * (int)$records_per_page);
+$offset = max(0, ($page - 1) * $records_per_page);
 
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -272,7 +273,8 @@ $families_result = mysqli_query($connection, $families_query);
 $count_query = "SELECT COUNT(DISTINCT f.id) as total FROM families f";
 $count_result = mysqli_query($connection, $count_query);
 $total_records = mysqli_fetch_assoc($count_result)['total'];
-$total_pages = ceil($total_records / $records_per_page);
+// Use the same $records_per_page when computing total pages
+$total_pages = ($records_per_page > 0) ? ceil($total_records / $records_per_page) : 1;
 
 // Get all residents for member selection (exclude those who are already family members)
 $residents_query = "
@@ -301,7 +303,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Resident Family Barangay Management System</title>
+    <title>Resident Family Cawit Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -1251,7 +1253,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
         <div class="sidebar-header">
             <div class="sidebar-brand">
                 <i class="fas fa-building"></i>
-                Barangay Management
+               Cawit Barangay Management
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
@@ -1311,24 +1313,24 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                 </a>
             </div>
             <!-- Finance -->
-			<div class="nav-section">
-				<div class="nav-section-title">Finance</div>
-				<a href="budgets.php" class="nav-item">
-					<i class="fas fa-wallet"></i>
-					Budgets
-				</a>
-				<a href="expenses.php" class="nav-item">
-					<i class="fas fa-file-invoice-dollar"></i>
-					Expenses
-				</a>
-			</div>
+            <div class="nav-section">
+                <div class="nav-section-title">Finance</div>
+                <a href="budgets.php" class="nav-item">
+                    <i class="fas fa-wallet"></i>
+                    Budgets
+                </a>
+                <a href="expenses.php" class="nav-item">
+                    <i class="fas fa-file-invoice-dollar"></i>
+                    Expenses
+                </a>
+            </div>
 
             <div class="nav-section">
                 <div class="nav-section-title">Settings</div>
                 <a href="account_management.php" class="nav-item">
-					<i class="fas fa-user-cog"></i>
-					Account Management
-				</a>
+                    <i class="fas fa-user-cog"></i>
+                    Account Management
+                </a>
                 <a href="settings.php" class="nav-item">
                     <i class="fas fa-cog"></i>
                     Settings
@@ -1434,68 +1436,24 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             $baseQuery = http_build_query($qs);
             $base = $baseQuery !== '' ? '?' . $baseQuery . '&page=' : '?page=';
 
-            // Render compact pagination with ellipses
-            if ($total_pages > 1):
-                $range = 2; // pages to show around current
+            // Simple numeric pagination (Previous, pages, Next) — same format as resident_account
+            if ($total_pages > 1) {
                 echo '<div class="pagination">';
-
-                // Prev
                 if ($page > 1) {
-                    echo '<a href="' . htmlspecialchars($base . ($page - 1)) . '">&laquo; Prev</a>';
+                    echo '<a href="' . htmlspecialchars($base . ($page - 1)) . '">&laquo; Previous</a>';
                 }
-
-                if ($total_pages <= (1 + ($range * 2) + 2)) {
-                    // small number of pages — show all
-                    for ($i = 1; $i <= $total_pages; $i++) {
-                        if ($i == $page) {
-                            echo '<span class="current">' . $i . '</span>';
-                        } else {
-                            echo '<a href="' . htmlspecialchars($base . $i) . '">' . $i . '</a>';
-                        }
-                    }
-                } else {
-                    // always show first
-                    if ($page == 1) {
-                        echo '<span class="current">1</span>';
+                for ($i = 1; $i <= $total_pages; $i++) {
+                    if ($i == $page) {
+                        echo '<span class="current">' . $i . '</span>';
                     } else {
-                        echo '<a href="' . htmlspecialchars($base . '1') . '">1</a>';
-                    }
-
-                    // left ellipsis
-                    $start = max(2, $page - $range);
-                    $end = min($total_pages - 1, $page + $range);
-                    if ($start > 2) {
-                        echo '<span>...</span>';
-                    }
-
-                    for ($i = $start; $i <= $end; $i++) {
-                        if ($i == $page) {
-                            echo '<span class="current">' . $i . '</span>';
-                        } else {
-                            echo '<a href="' . htmlspecialchars($base . $i) . '">' . $i . '</a>';
-                        }
-                    }
-
-                    // right ellipsis
-                    if ($end < $total_pages - 1) {
-                        echo '<span>...</span>';
-                    }
-
-                    // always show last
-                    if ($page == $total_pages) {
-                        echo '<span class="current">' . $total_pages . '</span>';
-                    } else {
-                        echo '<a href="' . htmlspecialchars($base . $total_pages) . '">' . $total_pages . '</a>';
+                        echo '<a href="' . htmlspecialchars($base . $i) . '">' . $i . '</a>';
                     }
                 }
-
-                // Next
                 if ($page < $total_pages) {
                     echo '<a href="' . htmlspecialchars($base . ($page + 1)) . '">Next &raquo;</a>';
                 }
-
                 echo '</div>';
-            endif;
+            }
             ?>
         </div>
 

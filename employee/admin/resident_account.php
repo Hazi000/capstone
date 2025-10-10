@@ -8,6 +8,11 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'super_admin') {
     exit();
 }
 
+// --- bring flash messages from session into local variables (PRG support) ---
+$success_message = $_SESSION['success_message'] ?? null;
+$error_message = $_SESSION['error_message'] ?? null;
+unset($_SESSION['success_message'], $_SESSION['error_message']);
+
 // Create uploads directory if it doesn't exist
 $upload_dir = '../../uploads/residents/';
 if (!file_exists($upload_dir)) {
@@ -52,9 +57,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            ($photo_path ? "'$photo_path'" : "NULL") . ")";
             
             if (mysqli_query($connection, $insert_query)) {
-                $success_message = "Resident added successfully!";
+                $_SESSION['success_message'] = "Resident added successfully!";
+                header("Location: resident_account.php");
+                exit();
             } else {
-                $error_message = "Error adding resident: " . mysqli_error($connection);
+                $_SESSION['error_message'] = "Error adding resident: " . mysqli_error($connection);
+                header("Location: resident_account.php");
+                exit();
             }
         } elseif ($_POST['action'] === 'update_resident') {
             $id = intval($_POST['resident_id']);
@@ -110,9 +119,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            WHERE id = $id";
             
             if (mysqli_query($connection, $update_query)) {
-                $success_message = "Resident updated successfully!";
+                $_SESSION['success_message'] = "Resident updated successfully!";
+                header("Location: resident_account.php");
+                exit();
             } else {
-                $error_message = "Error updating resident: " . mysqli_error($connection);
+                $_SESSION['error_message'] = "Error updating resident: " . mysqli_error($connection);
+                header("Location: resident_account.php");
+                exit();
             }
         } elseif ($_POST['action'] === 'delete_resident') {
             $id = intval($_POST['resident_id']);
@@ -129,13 +142,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $delete_query = "DELETE FROM residents WHERE id = $id";
             
             if (mysqli_query($connection, $delete_query)) {
-                $success_message = "Resident deleted successfully!";
+                $_SESSION['success_message'] = "Resident deleted successfully!";
+                header("Location: resident_account.php");
+                exit();
             } else {
-                $error_message = "Error deleting resident: " . mysqli_error($connection);
+                $_SESSION['error_message'] = "Error deleting resident: " . mysqli_error($connection);
+                header("Location: resident_account.php");
+                exit();
             }
         } 
-        // Add new account management handling
-        if ($_POST['action'] === 'get_account') {
+        // Lock / Unlock account via AJAX POST
+        elseif ($_POST['action'] === 'lock_account' || $_POST['action'] === 'unlock_account') {
+            header('Content-Type: application/json; charset=utf-8');
+            $account_id = intval($_POST['account_id'] ?? 0);
+            if ($account_id <= 0) {
+                echo json_encode(['status' => 'error', 'message' => 'Invalid account id']);
+                exit();
+            }
+            $lock_val = ($_POST['action'] === 'lock_account') ? 1 : 0;
+            $q = "UPDATE resident_accounts SET account_locked = $lock_val, updated_at = NOW() WHERE id = $account_id";
+            if (mysqli_query($connection, $q)) {
+                $msg = $lock_val ? 'Account locked successfully.' : 'Account unlocked successfully.';
+                echo json_encode(['status' => 'success', 'message' => $msg]);
+            } else {
+                echo json_encode(['status' => 'error', 'message' => 'Database error: ' . mysqli_error($connection)]);
+            }
+            exit();
+        }
+         // Add new account management handling
+         if ($_POST['action'] === 'get_account') {
             $rid = intval($_POST['resident_id'] ?? 0);
             $resp = ['found' => false, 'user' => null, 'error' => null];
 
@@ -233,38 +268,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit();
         } elseif ($_POST['action'] === 'update_account') {
             $account_id = intval($_POST['account_id']);
-            $username = mysqli_real_escape_string($connection, $_POST['username']);
-            $new_email = mysqli_real_escape_string($connection, $_POST['email']);
-            $password = $_POST['password'];
-            
-            // Get current email
-            $current_email_query = "SELECT email FROM resident_accounts WHERE id = $account_id";
-            $current_email_result = mysqli_query($connection, $current_email_query);
-            $current_email = mysqli_fetch_assoc($current_email_result)['email'];
-            
-            // Check if email is being changed
-            if ($current_email !== $new_email) {
-                // Store new email in session for later use
+            $username = isset($_POST['username']) ? mysqli_real_escape_string($connection, $_POST['username']) : '';
+            $new_email = isset($_POST['email']) ? mysqli_real_escape_string($connection, $_POST['email']) : '';
+            $password = $_POST['password'] ?? '';
+
+            // Fetch current record to detect real changes
+            $current_email = '';
+            $current_username = '';
+            $rowq = mysqli_query($connection, "SELECT username, email FROM resident_accounts WHERE id = $account_id LIMIT 1");
+            if ($rowq && mysqli_num_rows($rowq) > 0) {
+                $r = mysqli_fetch_assoc($rowq);
+                $current_username = $r['username'] ?? '';
+                $current_email = $r['email'] ?? '';
+            } else {
+                $error_message = "Account not found.";
+            }
+
+            // Check if email is being changed -> start verification flow (unchanged behavior)
+            if ($current_email !== $new_email && $new_email !== '') {
                 $_SESSION['pending_email_update'] = [
                     'account_id' => $account_id,
                     'new_email' => $new_email,
                     'timestamp' => time()
                 ];
-                
-                // Generate verification code
+
                 $verification_code = mt_rand(100000, 999999);
                 $expires = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-                
-                // Store verification details
                 $insert_verify = "INSERT INTO email_change_verifications (account_id, new_email, verification_code, code_expiry) 
                                  VALUES ($account_id, '$new_email', '$verification_code', '$expires')";
-                
+
                 if (mysqli_query($connection, $insert_verify)) {
-                    // Send verification email
                     $subject = "Email Verification Code";
-                    $message = "Your verification code is: $verification_code\n";
-                    $message .= "This code will expire in 15 minutes.\n";
-                    
+                    $message = "Your verification code is: $verification_code\nThis code will expire in 15 minutes.\n";
                     if (sendEmail($new_email, $subject, $message)) {
                         $success_message = "Verification code sent to $new_email";
                     } else {
@@ -272,129 +307,156 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
             }
-            
-            // Update other account details
-            $update_query = "UPDATE resident_accounts SET username = '$username'";
+
+            // Build list of changes for update (only username/password)
+            $changes = [];
+            if ($username !== '' && $username !== $current_username) {
+                $changes[] = "username = '$username'";
+            }
             if (!empty($password)) {
                 $password_hash = password_hash($password, PASSWORD_DEFAULT);
-                $update_query .= ", password = '$password_hash'";
-            }
-            $update_query .= " WHERE id = $account_id";
-            
-            if (mysqli_query($connection, $update_query)) {
-                if ($current_email === $new_email) {
-                    $success_message = "Account updated successfully!";
-                }
-            } else {
-                $error_message = "Error updating account: " . mysqli_error($connection);
-            }
-        } elseif ($_POST['action'] === 'verify_email') {
-            header('Content-Type: application/json; charset=utf-8');
-
-            $code = isset($_POST['code']) ? trim(mysqli_real_escape_string($connection, $_POST['code'])) : '';
-            $posted_account_id = isset($_POST['account_id']) ? intval($_POST['account_id']) : 0;
-
-            // fallback to session
-            $pending_update = $_SESSION['pending_email_update'] ?? null;
-            $session_account_id = $pending_update['account_id'] ?? 0;
-
-            $account_id = $posted_account_id ?: $session_account_id;
-
-            if (!$account_id || $code === '') {
-                echo json_encode(['status' => 'error', 'message' => 'Missing account or code.']);
-                exit();
+                $changes[] = "password = '$password_hash'";
             }
 
-            // Fetch the latest unused verification row for this account
-            $q = "SELECT * FROM email_change_verifications
-                  WHERE account_id = $account_id
-                  AND used = 0
-                  ORDER BY id DESC LIMIT 1";
-            $res = mysqli_query($connection, $q);
-
-            if ($res === false) {
-                echo json_encode(['status' => 'error', 'message' => 'Database error: ' . mysqli_error($connection)]);
-                exit();
-            }
-
-            if (mysqli_num_rows($res) === 0) {
-                echo json_encode(['status' => 'error', 'message' => 'No pending verification code found. Please request a new code.']);
-                exit();
-            }
-
-            $row = mysqli_fetch_assoc($res);
-
-            // compare codes (string-safe)
-            $stored_code = (string)$row['verification_code'];
-            if ($stored_code !== (string)$code) {
-                // do not reveal the stored code; just report mismatch
-                echo json_encode(['status' => 'error', 'message' => 'Verification code does not match.']);
-                exit();
-            }
-
-            // check expiry in PHP to avoid timezone mismatch
-            $expiry_ts = strtotime($row['code_expiry']);
-            if ($expiry_ts === false || $expiry_ts < time()) {
-                echo json_encode(['status' => 'error', 'message' => 'Verification code has expired. Request a new code.']);
-                exit();
-            }
-
-            // use new_email from this verification row for consistency
-            $new_email = mysqli_real_escape_string($connection, $row['new_email']);
-
-            $update = "UPDATE resident_accounts SET email = '$new_email' WHERE id = $account_id";
-            if (mysqli_query($connection, $update)) {
-                // mark verification used
-                mysqli_query($connection, "UPDATE email_change_verifications SET used = 1 WHERE id = {$row['id']}");
-
-                // clear session pending if matches
-                if ($pending_update && $pending_update['account_id'] == $account_id && $pending_update['new_email'] === $row['new_email']) {
-                    unset($_SESSION['pending_email_update']);
-                }
-
-                echo json_encode(['status' => 'success', 'message' => 'Email verified and updated successfully']);
-            } else {
-                echo json_encode(['status' => 'error', 'message' => 'Error updating email: ' . mysqli_error($connection)]);
-            }
-            exit();
-        } elseif ($_POST['action'] === 'send_verification') {
-            header('Content-Type: application/json');
-            $account_id = intval($_POST['account_id']);
-            $new_email = mysqli_real_escape_string($connection, $_POST['email']);
-            
-            // Generate verification code
-            $verification_code = mt_rand(100000, 999999);
-            $expires = date('Y-m-d H:i:s', strtotime('+15 minutes'));
-            
-            // Store verification details
-            $insert_verify = "INSERT INTO email_change_verifications (account_id, new_email, verification_code, code_expiry) 
-                             VALUES ($account_id, '$new_email', '$verification_code', '$expires')";
-            
-            if (mysqli_query($connection, $insert_verify)) {
-                // Store pending email update in session
-                $_SESSION['pending_email_update'] = [
-                    'account_id' => $account_id,
-                    'new_email' => $new_email,
-                    'timestamp' => time()
-                ];
-                
-                // Send verification email
-                $subject = "Email Verification Code";
-                $message = "Your verification code is: $verification_code\n";
-                $message .= "This code will expire in 15 minutes.\n";
-                
-                if (sendEmail($new_email, $subject, $message)) {
-                    echo json_encode(['status' => 'success', 'message' => 'Verification code sent successfully']);
+            // If there are changes, perform UPDATE; otherwise skip the UPDATE to avoid showing success when nothing changed.
+            if (!empty($changes)) {
+                $update_query = "UPDATE resident_accounts SET " . implode(', ', $changes) . ", updated_at = CURRENT_TIMESTAMP WHERE id = $account_id";
+                if (mysqli_query($connection, $update_query)) {
+                    // Only show success when email was NOT changed (email-change flow has its own message)
+                    if ($current_email === $new_email) {
+                        $_SESSION['success_message'] = "Account updated successfully!";
+                        header("Location: resident_account.php");
+                        exit();
+                    } else {
+                        // username/password changed but email change flow is pending — store neutral success if desired
+                        $_SESSION['success_message'] = "Account updated. Email change pending verification.";
+                        header("Location: resident_account.php");
+                        exit();
+                    }
                 } else {
-                    echo json_encode(['status' => 'error', 'message' => 'Failed to send verification email']);
+                    $_SESSION['error_message'] = "Error updating account: " . mysqli_error($connection);
+                    header("Location: resident_account.php");
+                    exit();
                 }
             } else {
-                echo json_encode(['status' => 'error', 'message' => 'Database error']);
+                // No username/password changes. If email wasn't changed either, do not show success message.
+                if ($current_email === $new_email) {
+                    // nothing changed: keep user on page without flashing "updated" message
+                    header("Location: resident_account.php");
+                    exit();
+                } else {
+                    // Only email changed -> verification flow already set; redirect to clear POST
+                    header("Location: resident_account.php");
+                    exit();
+                }
             }
-            exit();
-        }
-    }
-}
+         } elseif ($_POST['action'] === 'verify_email') {
+             header('Content-Type: application/json; charset=utf-8');
+
+             $code = isset($_POST['code']) ? trim(mysqli_real_escape_string($connection, $_POST['code'])) : '';
+             $posted_account_id = isset($_POST['account_id']) ? intval($_POST['account_id']) : 0;
+
+             // fallback to session
+             $pending_update = $_SESSION['pending_email_update'] ?? null;
+             $session_account_id = $pending_update['account_id'] ?? 0;
+
+             $account_id = $posted_account_id ?: $session_account_id;
+
+             if (!$account_id || $code === '') {
+                 echo json_encode(['status' => 'error', 'message' => 'Missing account or code.']);
+                 exit();
+             }
+
+             // Fetch the latest unused verification row for this account
+             $q = "SELECT * FROM email_change_verifications
+                   WHERE account_id = $account_id
+                   AND used = 0
+                   ORDER BY id DESC LIMIT 1";
+             $res = mysqli_query($connection, $q);
+
+             if ($res === false) {
+                 echo json_encode(['status' => 'error', 'message' => 'Database error: ' . mysqli_error($connection)]);
+                 exit();
+             }
+
+             if (mysqli_num_rows($res) === 0) {
+                 echo json_encode(['status' => 'error', 'message' => 'No pending verification code found. Please request a new code.']);
+                 exit();
+             }
+
+             $row = mysqli_fetch_assoc($res);
+
+             // compare codes (string-safe)
+             $stored_code = (string)$row['verification_code'];
+             if ($stored_code !== (string)$code) {
+                 // do not reveal the stored code; just report mismatch
+                 echo json_encode(['status' => 'error', 'message' => 'Verification code does not match.']);
+                 exit();
+             }
+
+             // check expiry in PHP to avoid timezone mismatch
+             $expiry_ts = strtotime($row['code_expiry']);
+             if ($expiry_ts === false || $expiry_ts < time()) {
+                 echo json_encode(['status' => 'error', 'message' => 'Verification code has expired. Request a new code.']);
+                 exit();
+             }
+
+             // use new_email from this verification row for consistency
+             $new_email = mysqli_real_escape_string($connection, $row['new_email']);
+
+             $update = "UPDATE resident_accounts SET email = '$new_email' WHERE id = $account_id";
+             if (mysqli_query($connection, $update)) {
+                 // mark verification used
+                 mysqli_query($connection, "UPDATE email_change_verifications SET used = 1 WHERE id = {$row['id']}");
+
+                 // clear session pending if matches
+                 if ($pending_update && $pending_update['account_id'] == $account_id && $pending_update['new_email'] === $row['new_email']) {
+                     unset($_SESSION['pending_email_update']);
+                 }
+
+                 echo json_encode(['status' => 'success', 'message' => 'Email verified and updated successfully']);
+             } else {
+                 echo json_encode(['status' => 'error', 'message' => 'Error updating email: ' . mysqli_error($connection)]);
+             }
+             exit();
+         } elseif ($_POST['action'] === 'send_verification') {
+             header('Content-Type: application/json');
+             $account_id = intval($_POST['account_id']);
+             $new_email = mysqli_real_escape_string($connection, $_POST['email']);
+             
+             // Generate verification code
+             $verification_code = mt_rand(100000, 999999);
+             $expires = date('Y-m-d H:i:s', strtotime('+15 minutes'));
+             
+             // Store verification details
+             $insert_verify = "INSERT INTO email_change_verifications (account_id, new_email, verification_code, code_expiry) 
+                             VALUES ($account_id, '$new_email', '$verification_code', '$expires')";
+             
+             if (mysqli_query($connection, $insert_verify)) {
+                 // Store pending email update in session
+                 $_SESSION['pending_email_update'] = [
+                     'account_id' => $account_id,
+                     'new_email' => $new_email,
+                     'timestamp' => time()
+                 ];
+                 
+                 // Send verification email
+                 $subject = "Email Verification Code";
+                 $message = "Your verification code is: $verification_code\n";
+                 $message .= "This code will expire in 15 minutes.\n";
+                 
+                 if (sendEmail($new_email, $subject, $message)) {
+                     echo json_encode(['status' => 'success', 'message' => 'Verification code sent successfully']);
+                 } else {
+                     echo json_encode(['status' => 'error', 'message' => 'Failed to send verification email']);
+                 }
+             } else {
+                 echo json_encode(['status' => 'error', 'message' => 'Database error']);
+             }
+             exit();
+         }
+     }
+ }
 
 // Get all residents with search and pagination
 $search = isset($_GET['search']) ? mysqli_real_escape_string($connection, $_GET['search']) : '';
@@ -446,7 +508,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Resident Account Management - Barangay Management System</title>
+	<title>Resident Account Management - Cawit Barangay Management System</title>
 	<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 	<link href="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.min.css" rel="stylesheet">
 	<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11.7.32/dist/sweetalert2.all.min.js"></script>
@@ -1308,7 +1370,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 		<div class="sidebar-header">
 			<div class="sidebar-brand">
 				<i class="fas fa-building"></i>
-				Barangay Management
+				Cawit Barangay Management
 			</div>
 			<div class="user-info">
 				<div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
@@ -1331,7 +1393,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 					<i class="fas fa-users"></i>
 					Resident Profiling
 				</a>
-				 <a href="resident_family.php" class="nav-item">
+				<a href="resident_family.php" class="nav-item">
                     <i class="fas fa-user-friends"></i>
                     Resident Family
                 </a>
@@ -1367,7 +1429,8 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     Disaster Management
                 </a>
 			</div>
-			<!-- Finance -->
+
+			 <!-- Finance -->
             <div class="nav-section">
                 <div class="nav-section-title">Finance</div>
                 <a href="budgets.php" class="nav-item">
@@ -1379,13 +1442,12 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     Expenses
                 </a>
             </div>
-
 			<div class="nav-section">
 				<div class="nav-section-title">Settings</div>
 				<a href="account_management.php" class="nav-item">
-					<i class="fas fa-user-cog"></i>
-					Account Management
-				</a>
+                    <i class="fas fa-user-cog"></i>
+                    Account Management
+                </a>
 				<a href="settings.php" class="nav-item">
 					<i class="fas fa-cog"></i>
 					Settings
@@ -1526,31 +1588,37 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 				</div>
 				
 				<!-- Pagination -->
-				<?php if ($total_pages > 1): ?>
-					<div class="pagination">
-						<?php if ($page > 1): ?>
-							<a href="?page=<?php echo ($page - 1); ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>">
-								<i class="fas fa-chevron-left"></i> Previous
-							</a>
-						<?php endif; ?>
-						
-						<?php for ($i = 1; $i <= $total_pages; $i++): ?>
-							<?php if ($i == $page): ?>
-								<span class="current"><?php echo $i; ?></span>
-							<?php else: ?>
-								<a href="?page=<?php echo $i; ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>">
-									<?php echo $i; ?>
-								</a>
-							<?php endif; ?>
-						<?php endfor; ?>
-						
-						<?php if ($page < $total_pages): ?>
-							<a href="?page=<?php echo ($page + 1); ?>&search=<?php echo urlencode($search); ?>&status=<?php echo urlencode($status_filter); ?>">
-								Next <i class="fas fa-chevron-right"></i>
-							</a>
-						<?php endif; ?>
-					</div>
-				<?php endif; ?>
+				<?php
+				// Build base URL preserving other query params (same pattern as resident_family)
+				$qs = $_GET;
+				unset($qs['page']);
+				$baseQuery = http_build_query($qs);
+				$base = $baseQuery !== '' ? '?' . $baseQuery . '&page=' : '?page=';
+
+				if ($total_pages > 1) {
+					echo '<div class="pagination">';
+					// Prev
+					if ($page > 1) {
+						echo '<a href="' . htmlspecialchars($base . ($page - 1)) . '"><i class="fas fa-chevron-left"></i> Previous</a>';
+					}
+
+					// page numbers
+					for ($i = 1; $i <= $total_pages; $i++) {
+						if ($i == $page) {
+							echo '<span class="current">' . $i . '</span>';
+						} else {
+							echo '<a href="' . htmlspecialchars($base . $i) . '">' . $i . '</a>';
+						}
+					}
+
+					// Next
+					if ($page < $total_pages) {
+						echo '<a href="' . htmlspecialchars($base . ($page + 1)) . '">Next <i class="fas fa-chevron-right"></i></a>';
+					}
+
+					echo '</div>';
+				}
+				?>
 			</div>
 		</div>
 	</div>
@@ -1932,6 +2000,8 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 			document.body.style.overflow = 'hidden';
 		}
 
+
+
 		// Close a modal by id
 		function closeModal(id) {
 			const modal = document.getElementById(id);
@@ -1965,6 +2035,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 			const overlay = document.getElementById('sidebarOverlay');
 			if (!sidebar || !overlay) return;
 			sidebar.classList.toggle('active');
+		
 			overlay.classList.toggle('active');
 		}
 
@@ -2202,40 +2273,97 @@ function submitVerificationCode() {
 
 // add logout confirmation using SweetAlert2
 function handleLogout() {
-	// Use SweetAlert2 to confirm logout
-	Swal.fire({
-		title: 'Are you sure you want to logout?',
-		text: "You will be logged out of the admin panel.",
-		icon: 'warning',
-		showCancelButton: true,
-		confirmButtonColor: '#d33',
-		cancelButtonColor: '#6c757d',
-		confirmButtonText: 'Yes, logout',
-		cancelButtonText: 'Cancel',
-		reverseButtons: true
-	}).then((result) => {
-		if (result.isConfirmed) {
-			// Optionally show a small loading toast while submitting
 			Swal.fire({
-				title: 'Logging out...',
-				allowOutsideClick: false,
-				allowEscapeKey: false,
-				showConfirmButton: false,
-				didOpen: () => {
-					Swal.showLoading();
-					// submit the existing logout form
-					const form = document.getElementById('logoutForm');
-					if (form) {
-						form.submit();
-					} else {
-						// fallback: navigate to logout URL
-						window.location.href = '../../employee/logout.php';
-					}
+				title: 'Logout Confirmation',
+				text: "Are you sure you want to logout?",
+				icon: 'question',
+				showCancelButton: true,
+				confirmButtonColor: '#3085d6',
+				cancelButtonColor: '#d33',
+				confirmButtonText: 'Yes, logout',
+				cancelButtonText: 'Cancel'
+			}).then((result) => {
+				if (result.isConfirmed) {
+					document.getElementById('logoutForm').submit();
 				}
 			});
 		}
-	});
-}
+
+		// SweetAlert confirmation for locking account
+    function lockAccount(accountId) {
+        Swal.fire({
+            title: 'Lock Account',
+            text: "Are you sure you want to lock this account?",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, lock it',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const form = new URLSearchParams();
+                form.append('action', 'lock_account');
+                form.append('account_id', accountId);
+                fetch('resident_account.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: form.toString()
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        Swal.fire({ icon: 'success', title: 'Locked', text: data.message, timer: 1500, showConfirmButton: false })
+                            .then(() => location.reload());
+                    } else {
+                        Swal.fire({ icon: 'error', title: 'Error', text: data.message || 'Unable to lock account' });
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    Swal.fire({ icon: 'error', title: 'Error', text: 'Request failed' });
+                });
+            }
+        });
+    }
+
+    // SweetAlert confirmation for unlocking account
+    function unlockAccount(accountId) {
+        Swal.fire({
+            title: 'Unlock Account',
+            text: "Are you sure you want to unlock this account?",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#3085d6',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Yes, unlock it',
+            cancelButtonText: 'Cancel'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const form = new URLSearchParams();
+                form.append('action', 'unlock_account');
+                form.append('account_id', accountId);
+                fetch('resident_account.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: form.toString()
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        Swal.fire({ icon: 'success', title: 'Unlocked', text: data.message, timer: 1500, showConfirmButton: false })
+                            .then(() => location.reload());
+                    } else {
+                        Swal.fire({ icon: 'error', title: 'Error', text: data.message || 'Unable to unlock account' });
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    Swal.fire({ icon: 'error', title: 'Error', text: 'Request failed' });
+                });
+            }
+        });
+    }
 	</script>
 </body>
 </html>

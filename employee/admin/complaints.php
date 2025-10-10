@@ -1493,7 +1493,7 @@ $current_result = mysqli_query($connection, $paginated_query);
            
 
             <div class="nav-section">
-                <div class="nav-section-title">Settings</div>
+                
                <div class="nav-section-title">Settings</div>
                 <a href="account_management.php" class="nav-item">
                     <i class="fas fa-user-cog"></i>

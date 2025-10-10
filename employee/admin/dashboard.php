@@ -69,6 +69,16 @@ $calendar_events_query = "
     ORDER BY event_date ASC, event_time ASC";
 
 $calendar_events = mysqli_query($connection, $calendar_events_query);
+
+// Build events_data array for client-side calendar (rewind result set)
+$events_data = [];
+if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
+    mysqli_data_seek($calendar_events, 0);
+    while ($ev = mysqli_fetch_assoc($calendar_events)) {
+        $events_data[] = $ev;
+    }
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -76,7 +86,7 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Super Admin Dashboard - Barangay Management System</title>
+    <title>Secretary Dashboard - Cawit Barangay Management System</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <!-- Add SweetAlert2 CDN -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -579,8 +589,6 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-     
-
         .upcoming-events {
             background: white;
             border-radius: 12px;
@@ -759,7 +767,7 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
         <div class="sidebar-header">
             <div class="sidebar-brand">
                 <i class="fas fa-building"></i>
-                Barangay Management
+                Cawit Barangay Management
             </div>
             <div class="user-info">
                 <div class="user-name"><?php echo $_SESSION['full_name']; ?></div>
@@ -833,12 +841,11 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
             </div>
 
             <div class="nav-section">
-
                 <div class="nav-section-title">Settings</div>
-                  <a href="account_management.php" class="nav-item">
-					<i class="fas fa-user-cog"></i>
-					Account Management
-				</a>
+                <a href="account_management.php" class="nav-item">
+                    <i class="fas fa-user-cog"></i>
+                    Account Management
+                </a>
                 <a href="settings.php" class="nav-item">
                     <i class="fas fa-cog"></i>
                     Settings
@@ -1019,55 +1026,7 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                         </div>
                     </div>
 
-                    <div class="upcoming-events">
-                        <div class="upcoming-header">
-                            <h3 class="upcoming-title">
-                                <i class="fas fa-clock"></i>
-                                Upcoming Events
-                            </h3>
-                        </div>
-                        <div class="upcoming-list">
-                            <?php 
-                            $events_data = [];
-                            mysqli_data_seek($calendar_events, 0);
-                            if (mysqli_num_rows($calendar_events) > 0): 
-                                while ($event = mysqli_fetch_assoc($calendar_events)): 
-                                    $events_data[] = $event;
-                            ?>
-                                <div class="upcoming-item">
-                                    <div class="upcoming-date">
-                                        <div class="upcoming-date-day"><?php echo date('j', strtotime($event['event_date'])); ?></div>
-                                        <div class="upcoming-date-month"><?php echo date('M', strtotime($event['event_date'])); ?></div>
-                                    </div>
-                                    <div class="upcoming-info">
-                                        <h4><?php echo htmlspecialchars($event['title']); ?></h4>
-                                        <p>
-                                            <?php if ($event['time']): ?>
-                                                <?php echo date('g:i A', strtotime($event['time'])); ?> • 
-                                            <?php endif; ?>
-                                            <?php if ($event['type'] == 'appointment'): ?>
-                                                with <?php echo htmlspecialchars($event['resident_name'] ?? 'Unknown'); ?>
-                                            <?php else: ?>
-                                                by <?php echo htmlspecialchars($event['resident_name'] ?? 'Unknown'); ?>
-                                            <?php endif; ?>
-                                        </p>
-                                    </div>
-                                    <span class="upcoming-type <?php echo $event['type']; ?>">
-                                        <?php echo ucfirst($event['type']); ?>
-                                    </span>
-                                </div>
-                            <?php 
-                                endwhile; 
-                            else: 
-                            ?>
-                                <div class="upcoming-item">
-                                    <div class="upcoming-info">
-                                        <p style="text-align: center; color: #666; padding: 2rem;">No upcoming events</p>
-                                    </div>
-                                </div>
-                            <?php endif; ?>
-                        </div>
-                    </div>
+                   
                 </div>
             </div>
         </div>
@@ -1113,11 +1072,12 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
                 
                 let eventsHTML = '';
                 dayEvents.slice(0, 2).forEach(event => { // Limit to 2 events per day
-                    eventsHTML += `<div class="calendar-event" title="${event.title}">${event.title}</div>`;
+                    // include data-id so we can navigate to the event detail on click
+                    eventsHTML += `<div class="calendar-event" data-id="${event.id}" title="${event.title}">${event.title}</div>`;
                 });
                 
                 if (dayEvents.length > 2) {
-                    eventsHTML += `<div class="calendar-event" style="font-style: italic; color: #999;">+${dayEvents.length - 2} more</div>`;
+                    eventsHTML += `<div class="calendar-event calendar-more" data-date="${dateString}" style="font-style: italic; color: #999; cursor:pointer;">+${dayEvents.length - 2} more</div>`;
                 }
                 
                 calendarHTML += `<div class="calendar-day ${isToday ? 'today' : ''}">
@@ -1136,6 +1096,42 @@ $calendar_events = mysqli_query($connection, $calendar_events_query);
             }
             
             document.getElementById('calendarDays').innerHTML = calendarHTML;
+
+            // Attach click handlers to events after render
+            document.querySelectorAll('.calendar-event[data-id]').forEach(el => {
+                el.addEventListener('click', function(e) {
+                    const id = this.getAttribute('data-id');
+                    if (id) {
+                        // navigate to your events page for this event (adjust path if needed)
+                        window.location.href = `events.php?id=${encodeURIComponent(id)}`;
+                    }
+                });
+            });
+
+            // "+N more" click opens a modal showing all events for that date
+            document.querySelectorAll('.calendar-more').forEach(el => {
+                el.addEventListener('click', function() {
+                    const date = this.getAttribute('data-date');
+                    const list = eventsData.filter(ev => ev.event_date === date);
+                    if (!list.length) return;
+                    let html = '<div style="text-align:left;">';
+                    list.forEach(ev => {
+                        const time = ev.time ? ` (${new Date('1970-01-01T' + ev.time + 'Z').toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})` : '';
+                        html += `<div style="margin-bottom:8px;">
+                                    <a href="events.php?id=${encodeURIComponent(ev.id)}" style="font-weight:600; color:#00426D; text-decoration:none;">${ev.title}</a>
+                                    <div style="font-size:0.9rem; color:#666;">${ev.event_date}${time}</div>
+                                 </div>`;
+                    });
+                    html += '</div>';
+                    Swal.fire({
+                        title: `Events on ${date}`,
+                        html: html,
+                        width: 600,
+                        showCloseButton: true,
+                        showConfirmButton: false
+                    });
+                });
+            });
         }
 
         function previousMonth() {
