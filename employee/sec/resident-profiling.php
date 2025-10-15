@@ -18,6 +18,15 @@ if (!file_exists($upload_dir)) {
     mkdir($upload_dir, 0777, true);
 }
 
+// Add back server-side age category helper
+function getAgeCategory($age) {
+    if ($age < 13) return 'Child';
+    if ($age < 20) return 'Teen';
+    if ($age < 36) return 'Young Adult';
+    if ($age < 60) return 'Adult';
+    return 'Senior';
+}
+
 // Handle form submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['action'])) {
@@ -146,6 +155,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $update_parts[] = "last_name = '$last_name'";
                     $update_parts[] = "full_name = '$full_name'";
                     $update_parts[] = "age = $age";
+                    $update_parts[] = "age_category = '$age_category'"; // NEW
+                    $update_parts[] = "gender = '$gender'"; // NEW
                     $update_parts[] = "contact_number = '$contact_number'";
                     $update_parts[] = "zone = '$zone'";
 
@@ -184,9 +195,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $fd_safe_insert = $face_descriptor ? ("'" . mysqli_real_escape_string($connection, $face_descriptor) . "'") : "NULL";
                     $photo_insert = $photo_path ? ("'" . mysqli_real_escape_string($connection, $photo_path) . "'") : "NULL";
 
-                    $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, suffix, age, contact_number, zone, photo_path, face_descriptor) 
+                    // include age_category and gender in insert query
+                    $insert_query = "INSERT INTO residents (first_name, middle_initial, last_name, full_name, suffix, age, age_category, gender, contact_number, zone, photo_path, face_descriptor) 
                                    VALUES ('$first_name', " . ($middle_initial !== '' ? "'$middle_initial'" : "NULL") . ", '$last_name', '$full_name', " . 
-                                   ($suffix ? "'$suffix'" : "NULL") . ", $age, '$contact_number', '$zone', " . 
+                                   ($suffix ? "'$suffix'" : "NULL") . ", $age, '$age_category', '$gender', '$contact_number', '$zone', " . 
                                    $photo_insert . ", " .
                                    $fd_safe_insert . ")";
 
@@ -1290,12 +1302,11 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             top: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
-            animation: fadeIn 0.3s ease;
+            background: rgba(0, 0, 0, 0.5);
         }
 
         .modal.show {
-            display: flex;
+            display: flex !important; /* Force display when .show class is present */
             align-items: center;
             justify-content: center;
         }
@@ -1618,13 +1629,9 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                     <button class="btn btn-add-resident" onclick="showModal('createModal')">
                         <i class="fas fa-user-plus"></i> Add New Resident
                     </button>
-                    <button class="btn btn-face-search" onclick="showModal('searchModal')">
-                        <i class="fas fa-search"></i> Search by Face
-                    </button>
+                    <!-- Search by Face button removed as requested -->
                 </div>
-                <div style="color: #666; font-size: 0.9rem;">
-                    Total Residents: <strong><?php echo $total_records; ?></strong>
-                </div>
+                <!-- Total Residents removed as requested -->
             </div>
 
             <!-- Residents Table -->
@@ -1793,6 +1800,9 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                                 <div id="countdownOverlay" class="countdown-overlay" style="display: none;">3</div>
                             </div>
                             <div class="camera-controls">
+                                <button type="button" class="btn btn-success" onclick="manualCapture()" id="captureBtn" disabled>
+                                    <i class="fas fa-camera"></i> Capture
+                                </button>
                                 <button type="button" class="btn btn-danger" onclick="stopCamera()">
                                     <i class="fas fa-stop"></i> Stop Camera
                                 </button>
@@ -1829,10 +1839,30 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                             <label for="last_name">Last Name *</label>
                             <input type="text" id="last_name" name="last_name" class="form-control" required>
                         </div>
+
                         <div class="form-group">
                             <label for="age">Age *</label>
                             <input type="number" id="age" name="age" class="form-control" min="1" max="120" required>
                         </div>
+
+                        <!-- NEW: Age Category (readonly) and hidden input for server) -->
+                        <div class="form-group">
+                            <label for="age_category">Age Category</label>
+                            <input type="text" id="age_category_display" class="form-control" readonly placeholder="Auto-calculated">
+                            <input type="hidden" id="age_category" name="age_category">
+                        </div>
+
+                        <!-- NEW: Gender -->
+                        <div class="form-group">
+                            <label for="gender">Gender *</label>
+                            <select id="gender" name="gender" class="form-control" required>
+                                <option value="">Select Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
                         <div class="form-group">
                             <label for="contact_number">Contact Number *</label>
                             <input type="text" id="contact_number" name="contact_number" class="form-control" required maxlength="11" inputmode="numeric" pattern="\d{11}" placeholder="09XXXXXXXXX">
@@ -1949,10 +1979,30 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                             <label for="edit_last_name">Last Name *</label>
                             <input type="text" id="edit_last_name" name="last_name" class="form-control" required>
                         </div>
+
                         <div class="form-group">
                             <label for="edit_age">Age *</label>
                             <input type="number" id="edit_age" name="age" class="form-control" min="1" max="120" required>
                         </div>
+
+                        <!-- NEW: Age Category for edit -->
+                        <div class="form-group">
+                            <label for="edit_age_category">Age Category</label>
+                            <input type="text" id="edit_age_category_display" class="form-control" readonly placeholder="Auto-calculated">
+                            <input type="hidden" id="edit_age_category" name="age_category">
+                        </div>
+
+                        <!-- NEW: Gender for edit -->
+                        <div class="form-group">
+                            <label for="edit_gender">Gender *</label>
+                            <select id="edit_gender" name="gender" class="form-control" required>
+                                <option value="">Select Gender</option>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+
                         <div class="form-group">
                             <label for="edit_contact_number">Contact Number *</label>
                             <input type="text" id="edit_contact_number" name="contact_number" class="form-control" required maxlength="11" inputmode="numeric" pattern="\d{11}" placeholder="09XXXXXXXXX">
@@ -2183,416 +2233,234 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             });
         }
 
-        // Enhanced face detection
-        async function detectFace(video, canvasId, statusId, buttonId, indicatorId = null, mode = 'create') {
-            if (!modelsLoaded) {
-                console.log('Models not loaded yet');
-                return;
-            }
-
-            if (!video || video.readyState !== 4 || video.videoWidth === 0) {
-                console.log('Video not ready');
-                return;
-            }
-            
-            const canvas = document.getElementById(canvasId);
-            if (!canvas) {
-                console.log('Canvas not found');
-                return;
-            }
-
-            const displaySize = { width: video.videoWidth, height: video.videoHeight };
-            faceapi.matchDimensions(canvas, displaySize);
-            
+        // Update detectFace function
+        async function detectFace(imageData) {
             try {
-                console.log('Detecting faces...');
-                
-                // Use TinyFaceDetector for better performance and compatibility
-                const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ 
-                    inputSize: 224, 
-                    scoreThreshold: 0.3 
-                }))
-                .withFaceLandmarks()
-                .withFaceExpressions()
-                .withFaceDescriptors();
-                
-                console.log('Detections found:', detections.length);
-                
-                const resizedDetections = faceapi.resizeResults(detections, displaySize);
-                
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                if (resizedDetections.length > 0) {
-                    const detection = resizedDetections[0];
-                    console.log('Face detected, confidence:', detection.detection.score);
-                    
-                    // Draw detection box
-                    const box = detection.detection.box;
-                    ctx.strokeStyle = '#4caf50';
-                    ctx.lineWidth = 3;
-                    ctx.strokeRect(box.x, box.y, box.width, box.height);
-                    
-                    // Draw corner indicators
-                    const cornerLength = 20;
-                    ctx.beginPath();
-                    // Top-left corner
-                    ctx.moveTo(box.x, box.y + cornerLength);
-                    ctx.lineTo(box.x, box.y);
-                    ctx.lineTo(box.x + cornerLength, box.y);
-                    // Top-right corner
-                    ctx.moveTo(box.x + box.width - cornerLength, box.y);
-                    ctx.lineTo(box.x + box.width, box.y);
-                    ctx.lineTo(box.x + box.width, box.y + cornerLength);
-                    // Bottom-left corner
-                    ctx.moveTo(box.x, box.y + box.height - cornerLength);
-                    ctx.lineTo(box.x, box.y + box.height);
-                    ctx.lineTo(box.x + cornerLength, box.y + box.height);
-                    // Bottom-right corner
-                    ctx.moveTo(box.x + box.width - cornerLength, box.y + box.height);
-                    ctx.lineTo(box.x + box.width, box.y + box.height);
-                    ctx.lineTo(box.x + box.width, box.y + box.height - cornerLength);
-                    ctx.stroke();
-                    
-                    faceDetected = true;
-                    
-                    // Update face indicator
-                    if (indicatorId) {
-                        const indicator = document.getElementById(indicatorId);
-                        
-                        if (mode === 'create' && !smileDetected && !isCapturing) {
-                            // Check for smile
-                            const smileConfidence = detection.expressions.happy || 0;
-                            console.log('Smile confidence:', smileConfidence);
-                            
-                            if (smileConfidence > 0.6) {
-                                smileDetected = true;
-                                indicator.className = 'face-indicator smile-ready';
-                                indicator.innerHTML = '<i class="fas fa-smile"></i><span>Smile Detected!</span>';
-                                
-                                // Update status
-                                document.getElementById(statusId).style.display = 'block';
-                                document.getElementById(statusId).className = 'face-status smile-detected';
-                                document.getElementById(statusId).innerHTML = '<i class="fas fa-smile"></i> Great! Starting countdown...';
-                                
-                                // Start countdown
-                                startCountdown(video, mode);
-                            } else {
-                                indicator.className = 'face-indicator smile-ready';
-                                indicator.innerHTML = '<i class="fas fa-smile"></i><span>Please Smile</span>';
-                                
-                                // Update status
-                                document.getElementById(statusId).style.display = 'block';
-                                document.getElementById(statusId).className = 'face-status face-detected';
-                                document.getElementById(statusId).innerHTML = '<i class="fas fa-smile"></i> Face detected! Please smile to continue';
-                            }
-                        } else if (mode === 'search' || mode === 'edit') {
-                            indicator.className = 'face-indicator detected';
-                            indicator.innerHTML = '<i class="fas fa-check-circle"></i><span>Face Detected</span>';
-                            
-                            document.getElementById(statusId).style.display = 'block';
-                            document.getElementById(statusId).className = 'face-status face-detected';
-                            document.getElementById(statusId).innerHTML = '<i class="fas fa-check-circle"></i> Face detected';
-                            
-                            if (buttonId && document.getElementById(buttonId)) {
-                                document.getElementById(buttonId).disabled = false;
-                            }
-                        } else {
-                            indicator.className = 'face-indicator detected';
-                            indicator.innerHTML = '<i class="fas fa-check-circle"></i><span>Face Detected</span>';
-                        }
-                    }
-                    
-                    return detection.descriptor;
-                } else {
-                    console.log('No faces detected');
-                    faceDetected = false;
-                    smileDetected = false;
-                    
-                    // No face detected
-                    if (indicatorId) {
-                        const indicator = document.getElementById(indicatorId);
-                        indicator.className = 'face-indicator not-detected';
-                        indicator.innerHTML = '<i class="fas fa-times-circle"></i><span>No Face</span>';
-                    }
-                    
-                    document.getElementById(statusId).style.display = 'block';
-                    document.getElementById(statusId).className = 'face-status no-face';
-                    document.getElementById(statusId).innerHTML = '<i class="fas fa-exclamation-circle"></i> Position your face in the camera';
-                    
-                    if (buttonId && document.getElementById(buttonId)) {
-                        document.getElementById(buttonId).disabled = true;
-                    }
-                    
-                    return null;
-                }
-            } catch (error) {
-                console.error('Face detection error:', error);
-                
-                // Update UI to show error
-                if (indicatorId) {
-                    const indicator = document.getElementById(indicatorId);
-                    indicator.className = 'face-indicator checking';
-                    indicator.innerHTML = '<i class="fas fa-exclamation-triangle"></i><span>Detection Error</span>';
-                }
-                
-                document.getElementById(statusId).style.display = 'block';
-                document.getElementById(statusId).className = 'face-status no-face';
-                document.getElementById(statusId).innerHTML = '<i class="fas fa-exclamation-triangle"></i> Detection error, please try again';
-                
-                return null;
-            }
-        }
-
-        // Countdown function
-        function startCountdown(video, mode) {
-            if (isCapturing) return;
-            isCapturing = true;
-            
-            const countdownEl = document.getElementById(mode === 'edit' ? 'editCountdownOverlay' : 'countdownOverlay');
-            countdownEl.style.display = 'flex';
-            
-            let count = 3;
-            countdownEl.textContent = count;
-            
-            const countdownInterval = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    countdownEl.textContent = count;
-                } else {
-                    clearInterval(countdownInterval);
-                    countdownEl.style.display = 'none';
-                    
-                    // Auto capture
-                    if (mode === 'create') {
-                        autoCapturePhoto();
-                    } else if (mode === 'edit') {
-                        autoCaptureEditPhoto();
-                    }
-                }
-            }, 1000);
-        }
-
-        // Auto capture functions
-        async function autoCapturePhoto() {
-            if (!currentFaceDescriptor) {
-                isCapturing = false;
-                return;
-            }
-            
-            const video = document.getElementById('videoElement');
-            const canvas = document.getElementById('photoCanvas');
-            const context = canvas.getContext('2d');
-            
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            context.drawImage(video, 0, 0);
-            
-            const imageData = canvas.toDataURL('image/jpeg');
-            document.getElementById('capturedImage').src = imageData;
-            document.getElementById('photo_data').value = imageData;
-            document.getElementById('face_descriptor').value = JSON.stringify(Array.from(currentFaceDescriptor));
-            
-            // New: check if face already exists in DB and pre-fill form / set existing_resident_id
-            try {
-                const matched = await checkExistingFace(currentFaceDescriptor);
-                if (matched) {
-                    // If a match was found, checkExistingFace already stopped camera and closed the modal.
-                    // Abort further UI changes here.
-                    isCapturing = false;
-                    return;
-                }
-            } catch (err) {
-                console.warn('checkExistingFace failed', err);
-            }
-
-            document.getElementById('camera-container').style.display = 'none';
-            document.getElementById('photo-preview').style.display = 'block';
-            
-            if (faceDetectionInterval) {
-                clearInterval(faceDetectionInterval);
-                faceDetectionInterval = null;
-            }
-            
-            isCapturing = false;
-        }
-
-        // Check existing face and optionally prefill the form / set existing_resident_id
-        async function checkExistingFace(descriptorFloat32) {
-            if (!descriptorFloat32) return false;
-
-            const descriptorArray = Array.from(descriptorFloat32);
-            const formData = new FormData();
-            formData.append('action', 'search_face');
-            formData.append('search_descriptor', JSON.stringify(descriptorArray));
-
-            const resp = await fetch('', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await resp.json();
-            if (!data.found || !data.residents || data.residents.length === 0) {
-                // No residents with face descriptors in DB
-                return false;
-            }
-
-            // Compare descriptor to all returned residents (client-side) and find closest match
-            let best = null;
-            for (const resident of data.residents) {
-                if (resident.face_descriptor) {
-                    try {
-                        const stored = new Float32Array(JSON.parse(resident.face_descriptor));
-                        const distance = faceapi.euclideanDistance(descriptorFloat32, stored);
-                        
-                        if (best === null || distance < best.distance) {
-                            best = { resident, distance };
-                        }
-                    } catch (e) {
-                        console.warn('Failed to parse stored descriptor for resident', resident.id, e);
-                    }
-                }
-            }
-
-            // Threshold: 0.6 (tune if needed)
-            if (best && best.distance < 0.6) {
-                const r = best.resident;
-
-                // Immediately stop camera and close create modal to avoid duplication
-                try {
-                    if (typeof stopCamera === 'function') stopCamera();
-                } catch (e) {
-                    console.warn('stopCamera not available', e);
-                }
-                try {
-                    closeModal('createModal');
-                } catch (e) {
-                    console.warn('closeModal failed', e);
+                // Ensure imageData is properly formatted
+                if (!imageData.startsWith('data:image')) {
+                    imageData = 'data:image/jpeg;base64,' + imageData;
                 }
 
-                // Non-blocking notification
-                Swal.fire({
-                    toast: true,
-                    position: 'top-end',
-                    icon: 'info',
-                    title: `Existing resident detected: ${r.full_name || (r.first_name + ' ' + r.last_name)}`,
-                    showConfirmButton: false,
-                    timer: 3000
+                const response = await fetch(`${FACE_SERVICE_URL}/detect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ image: imageData })
                 });
 
-                return true;
-            } else {
-                // No close match: ensure status field visible/enabled
-                const statusEl = document.getElementById('status');
-                if (statusEl) {
-                    const statusGroup = statusEl.closest('.form-group');
-                    if (statusGroup) statusGroup.style.display = '';
-                    statusEl.disabled = false;
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
-                document.getElementById('existing_resident_id').value = '';
-                document.getElementById('suffix').value = '';
-                return false;
+
+                const result = await response.json();
+                console.log('Face detection result:', result);
+
+                return {
+                    success: true,
+                    has_face: result.has_face,
+                    embedding: result.embedding,
+                    bbox: result.bbox
+                };
+            } catch (e) {
+                console.error('Face detection error:', e);
+                return {
+                    success: false,
+                    has_face: false,
+                    error: e.message
+                };
             }
         }
 
-        // Camera functions for Create Modal
+        // Update startCamera function
         async function startCamera() {
             if (!modelsLoaded) {
                 alert('Face recognition models are still loading. Please wait...');
                 return;
             }
-            
-            const video = document.getElementById('videoElement');
-            const constraints = {
-                video: {
-                    width: { ideal: 640, min: 320 },
-                    height: { ideal: 480, min: 240 },
-                    facingMode: 'user'
-                }
-            };
 
             try {
-                console.log('Starting camera...');
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                video.srcObject = stream;
-                
-                // Wait for video to be ready
-                await new Promise((resolve) => {
-                    video.onloadedmetadata = () => {
-                        console.log('Video metadata loaded, dimensions:', video.videoWidth, 'x', video.videoHeight);
-                        resolve();
-                    };
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
                 });
-                
-                // Play the video
+
+                const video = document.getElementById('videoElement');
+                video.srcObject = stream;
                 await video.play();
-                console.log('Video is playing');
-                
+
                 document.getElementById('camera-start').style.display = 'none';
                 document.getElementById('camera-container').style.display = 'block';
                 document.getElementById('photo-preview').style.display = 'none';
-                
-                // Reset states
-                smileDetected = false;
-                faceDetected = false;
-                isCapturing = false;
-                
-                // Wait a bit for video to stabilize
-                setTimeout(() => {
-                    console.log('Starting face detection...');
-                    // Start face detection
-                    faceDetectionInterval = setInterval(async () => {
-                        if (video.readyState === 4 && !isCapturing && video.videoWidth > 0) {
-                            currentFaceDescriptor = await detectFace(video, 'faceCanvas', 'face-status', null, 'faceIndicator', 'create');
+
+                // Replace the faceDetectionInterval section in startCamera()
+                faceDetectionInterval = setInterval(async () => {
+                    if (video.readyState === 4 && !isCapturing) {
+                        const canvas = document.getElementById('photoCanvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        ctx.drawImage(video, 0, 0);
+                        
+                        try {
+                            const detection = await faceapi.detectSingleFace(video, 
+                                new faceapi.TinyFaceDetectorOptions())
+                                .withFaceLandmarks()
+                                .withFaceDescriptor();
+
+                            const indicator = document.getElementById('faceIndicator');
+                            const status = document.getElementById('face-status');
+                            const captureBtn = document.getElementById('captureBtn');
+
+                            // Update face matching section in detection interval
+                            if (detection) {
+                                // Got a face - check for matches
+                                const descriptor = Array.from(detection.descriptor);
+                                try {
+                                    const matchResponse = await fetch('../../api/face_match.php', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ descriptor })
+                                    });
+                                    
+                                    const matchResult = await matchResponse.json();
+                                    
+                                    if (matchResult.found && matchResult.matches.length > 0) {
+                                        // Found high confidence match
+                                        const match = matchResult.matches[0];
+                                        const confidence = match.confidence.toFixed(1);
+                                        
+                                        // Only show match if confidence is very high
+                                        if (match.confidence >= 85) {
+                                            indicator.className = 'face-indicator detected';
+                                            indicator.innerHTML = `
+                                                <i class="fas fa-user-check"></i>
+                                                <span>${match.full_name}</span>
+                                                <small style="opacity:0.8">(${confidence}%)</small>
+                                            `;
+                                            indicator.style.background = 'rgba(244,67,54,0.95)';
+                                            
+                                            status.className = 'face-status face-detected';
+                                            status.innerHTML = `
+                                                <i class="fas fa-exclamation-circle"></i> 
+                                                Already registered as <strong>${match.full_name}</strong>
+                                                <br><small>Match confidence: ${confidence}%</small>
+                                            `;
+                                            status.style.display = 'block';
+                                            
+                                            captureBtn.disabled = true;
+                                            
+                                            // Draw face box with confidence
+                                            const box = detection.detection.box;
+                                            ctx.strokeStyle = '#F44336';
+                                            ctx.lineWidth = 3;
+                                            ctx.strokeRect(box.x, box.y, box.width, box.height);
+                                            
+                                            // Add name label with confidence
+                                            ctx.font = '16px Arial';
+                                            ctx.fillStyle = 'rgba(244,67,54,0.95)';
+                                            const text = `${match.full_name} (${confidence}%)`;
+                                            const textWidth = ctx.measureText(text).width;
+                                            ctx.fillRect(box.x, Math.max(0, box.y - 30), textWidth + 20, 30);
+                                            ctx.fillStyle = '#ffffff';
+                                            ctx.fillText(text, box.x + 10, Math.max(20, box.y - 10));
+                                            
+                                            document.getElementById('existing_resident_id').value = match.id;
+                                        } else {
+                                            // Show as new face if confidence is too low
+                                            handleNewFace();
+                                        }
+                                    } else {
+                                        handleNewFace();
+                                    }
+                                } catch (err) {
+                                    console.error('Face matching error:', err);
+                                    handleNewFace();
+                                }
+                            } else {
+                                handleNoFace();
+                            }
+
+                            currentFaceDescriptor = descriptor;
+                            
+                        } catch (err) {
+                            console.error('Face detection error:', err);
                         }
-                    }, 500); // Slower interval for better performance
-                }, 1000);
-                
-            } catch (err) {
-                console.error('Error accessing camera:', err);
-                alert('Could not access camera. Please ensure you have given permission and try again.');
+                    }
+                }, 200); // Run detection more frequently
+
+            } catch (error) {
+                console.error('Error starting camera:', error);
+                alert('Could not access camera. Please ensure you have given permission.');
             }
         }
 
-        function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                stream = null;
-            }
-            if (faceDetectionInterval) {
-                clearInterval(faceDetectionInterval);
-                faceDetectionInterval = null;
-            }
-            document.getElementById('camera-start').style.display = 'block';
-            document.getElementById('camera-container').style.display = 'none';
-            document.getElementById('photo-preview').style.display = 'none';
-            document.getElementById('face-status').style.display = 'none';
-            document.getElementById('countdownOverlay').style.display = 'none';
-            
-            // Reset states
-            smileDetected = false;
-            faceDetected = false;
-            isCapturing = false;
-        }
+        // Add manual capture function
+        async function manualCapture() {
+            if (isCapturing) return;
+            isCapturing = true;
 
-        function retakePhoto() {
-            document.getElementById('camera-container').style.display = 'block';
-            document.getElementById('photo-preview').style.display = 'none';
-            document.getElementById('photo_data').value = '';
-            document.getElementById('face_descriptor').value = '';
-            
-            // Reset states
-            smileDetected = false;
-            faceDetected = false;
-            isCapturing = false;
-            
-            // Restart face detection
-            const video = document.getElementById('videoElement');
-            faceDetectionInterval = setInterval(async () => {
-                if (video.readyState === 4 && !isCapturing) {
-                    currentFaceDescriptor = await detectFace(video, 'faceCanvas', 'face-status', null, 'faceIndicator', 'create');
+            try {
+                const video = document.getElementById('videoElement');
+                const canvas = document.getElementById('photoCanvas');
+                const context = canvas.getContext('2d');
+
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                context.drawImage(video, 0, 0);
+
+                const imageData = canvas.toDataURL('image/jpeg');
+                const result = await detectFace(imageData);
+
+                if (!result.success || !result.has_face) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Face Detection Failed',
+                        text: 'Please ensure your face is clearly visible',
+                        timer: 3000
+                    });
+                    isCapturing = false;
+                    return;
                 }
-            }, 200);
+
+                // Save the captured image and face data
+                document.getElementById('capturedImage').src = imageData;
+                document.getElementById('photo_data').value = imageData;
+                document.getElementById('face_descriptor').value = JSON.stringify(result.embedding);
+
+                // Switch to preview mode
+                document.getElementById('camera-container').style.display = 'none';
+                document.getElementById('photo-preview').style.display = 'block';
+
+                // Stop the detection loop
+                if (faceDetectionInterval) {
+                    clearInterval(faceDetectionInterval);
+                    faceDetectionInterval = null;
+                }
+
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Photo Captured',
+                    text: 'Face detected and saved successfully!',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+
+            } catch (error) {
+                console.error('Manual capture error:', error);
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Capture Failed',
+                    text: 'Failed to capture photo. Please try again.',
+                    timer: 3000
+                });
+            } finally {
+                isCapturing = false;
+            }
         }
 
         // Camera functions for Edit Modal
@@ -2631,7 +2499,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                 document.getElementById('edit-camera-start').style.display = 'none';
                 document.getElementById('edit-camera-container').style.display = 'block';
                 document.getElementById('edit-photo-preview').style.display = 'none';
-                document.getElementById('edit-current-photo').style.display = 'none';
+                document.getElementById('edit-current_photo').style.display = 'none';
                 
                 // Reset states
                 smileDetected = false;
@@ -2706,7 +2574,16 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             const video = document.getElementById('editVideoElement');
             faceDetectionInterval = setInterval(async () => {
                 if (video.readyState === 4 && !isCapturing) {
-                    editFaceDescriptor = await detectFace(video, 'editFaceCanvas', 'edit-face-status', null, 'editFaceIndicator', 'edit');
+                    // Capture frame as base64
+                    const canvas = document.getElementById('editPhotoCanvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0);
+                    const imageData = canvas.toDataURL('image/jpeg');
+
+                    // Call backend detectFace
+                    editFaceDescriptor = await detectFace(imageData);
                     
                     // Check for smile for auto capture
                     if (editFaceDescriptor && !smileDetected && !isCapturing) {
@@ -2929,30 +2806,72 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
 
 
         function showModal(modalId) {
-            document.getElementById(modalId).classList.add('show');
+            const modal = document.getElementById(modalId);
+            if (!modal) {
+                console.error('Modal not found:', modalId);
+                return;
+            }
+            
+            modal.style.display = 'flex';
+            modal.classList.add('show');
             document.body.style.overflow = 'hidden';
+            
+            // Reset form if it's the create modal
+            if (modalId === 'createModal') {
+                const form = document.getElementById('createForm');
+                if (form) form.reset();
+                
+                // Reset camera/preview states
+                document.getElementById('camera-start').style.display = 'block';
+                document.getElementById('camera-container').style.display = 'none';
+                document.getElementById('photo-preview').style.display = 'none';
+                document.getElementById('face-status').style.display = 'none';
+            }
         }
 
         function closeModal(modalId) {
-            document.getElementById(modalId).classList.remove('show');
+            const modal = document.getElementById(modalId);
+            if (!modal) {
+                console.error('Modal not found:', modalId);
+                return;
+            }
+            
+            modal.classList.remove('show');
+            modal.style.display = 'none';
             document.body.style.overflow = 'auto';
+            
+            // Stop camera if running
+            if (modalId === 'createModal') {
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                    stream = null;
+                }
+                if (faceDetectionInterval) {
+                    clearInterval(faceDetectionInterval);
+                    faceDetectionInterval = null;
+                }
+            }
         }
 
-        // Minimal JS to fetch account info and show modal
-        document.addEventListener('click', function(e) {
-            if (e.target.classList.contains('modal')) {
-                closeModal(e.target.id);
-            }
-        });
-
-        // Close modal with Escape key
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                const modals = document.querySelectorAll('.modal.show');
-                modals.forEach(modal => {
-                    closeModal(modal.id);
+        // Add event listeners when document loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Close modal when clicking outside
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        closeModal(this.id);
+                    }
                 });
-            }
+            });
+            
+            // Close modal with Escape key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('.modal.show').forEach(modal => {
+                        closeModal(modal.id);
+                    });
+                }
+            });
         });
 
         // Auto-hide alerts after 5 seconds
@@ -2969,115 +2888,150 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
             });
         });
 
-        // Form validation
-    document.getElementById('createForm').addEventListener('submit', function(e) {
-        const firstName = document.getElementById('first_name').value.trim();
-        const lastName = document.getElementById('last_name').value.trim();
-        const age = document.getElementById('age').value;
-        const contactNumber = document.getElementById('contact_number').value.trim();
-        const photoData = document.getElementById('photo_data').value;
-        const faceDescriptor = document.getElementById('face_descriptor').value;
+        // Face Recognition Service Configuration
+        const FACE_SERVICE_URL = 'http://localhost:5000';
 
-        if (!firstName || !lastName || !age || !contactNumber) {
-            e.preventDefault();
-            Swal.fire({
-                icon: 'error',
-                title: 'Missing Fields',
-                text: 'Please fill in all required fields.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-            closeModal('createModal');
-            return false;
+        // Function to check if face service is running
+        async function checkFaceService() {
+            try {
+                const response = await fetch(`${FACE_SERVICE_URL}/health`);
+                const data = await response.json();
+                return data.status === 'healthy';
+            } catch (e) {
+                console.error('Face service not available:', e);
+                return false;
+            }
         }
 
-        if (!photoData || !faceDescriptor) {
-            e.preventDefault();
-            Swal.fire({
-                icon: 'error',
-                title: 'Photo Required',
-                text: 'Please capture a photo with face detection before submitting.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-            closeModal('createModal');
-            return false;
+        // Function to detect face and get embedding
+        async function detectFace(imageData) {
+            try {
+                // Ensure imageData is properly formatted
+                if (!imageData.startsWith('data:image')) {
+                    imageData = 'data:image/jpeg;base64,' + imageData;
+                }
+
+                const response = await fetch(`${FACE_SERVICE_URL}/detect`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ image: imageData })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('Face detection result:', result);
+
+                return {
+                    success: true,
+                    has_face: result.has_face,
+                    embedding: result.embedding,
+                    bbox: result.bbox
+                };
+            } catch (e) {
+                console.error('Face detection error:', e);
+                return {
+                    success: false,
+                    has_face: false,
+                    error: e.message
+                };
+            }
         }
 
-        if (age < 1 || age > 120) {
-            e.preventDefault();
-            Swal.fire({
-                icon: 'error',
-                title: 'Invalid Age',
-                text: 'Please enter a valid age between 1 and 120.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-            closeModal('createModal');
-            return false;
+        // Modify the photo capture function
+        async function capturePhoto(videoElement, mode = 'create') {
+            const canvas = document.createElement('canvas');
+            canvas.width = videoElement.videoWidth;
+            canvas.height = videoElement.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoElement, 0, 0);
+            
+            const imageData = canvas.toDataURL('image/jpeg');
+            
+            // Check face service
+            const serviceAvailable = await checkFaceService();
+            if (!serviceAvailable) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Face Recognition Unavailable',
+                    text: 'The face recognition service is not running. Please try again later.',
+                    timer: 3000
+                });
+                return null;
+            }
+            
+            // Detect face
+            const detection = await detectFace(imageData);
+            if (!detection.success) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Face Detection Failed',
+                    text: detection.error || 'Please ensure your face is clearly visible',
+                    timer: 3000
+                });
+                return null;
+            }
+            
+            return {
+                imageData,
+                faceDescriptor: detection.embedding,
+                bbox: detection.bbox
+            };
         }
 
-        if (!/^09\d{9}$/.test(contactNumber)) {
+        // Add these to your existing form submission handlers
+        document.getElementById('createForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            Swal.fire({
-                icon: 'error',
-                title: 'Invalid Contact Number',
-                text: 'Contact number must be 11 digits and start with 09.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-            closeModal('createModal');
-            return false;
-        }
-    });
+            
+            const photoData = document.getElementById('photo_data').value;
+            if (!photoData) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Photo Required',
+                    text: 'Please capture a photo with your face visible',
+                    timer: 3000
+                });
+                return;
+            }
+            
+            // Submit the form
+            this.submit();
+        });
 
-    document.getElementById('editForm').addEventListener('submit', function(e) {
-        const firstName = document.getElementById('edit_first_name').value.trim();
-        const lastName = document.getElementById('edit_last_name').value.trim();
-        const age = document.getElementById('edit_age').value;
-        const contactNumber = document.getElementById('edit_contact_number').value.trim();
-
-        if (!firstName || !lastName || !age || !contactNumber) {
+        document.getElementById('editForm').addEventListener('submit', async function(e) {
             e.preventDefault();
-            Swal.fire({
-                icon: 'error',
-                title: 'Missing Fields',
-                text: 'Please fill in all required fields.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-            closeModal('editModal');
-            return false;
-        }
+            
+            const photoData = document.getElementById('edit_photo_data').value;
+            if (photoData) {
+                // Only validate new photos if one was captured
+                const detection = await detectFace(photoData);
+                if (!detection.success) {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'Invalid Photo',
+                        text: 'Please ensure your face is clearly visible in the new photo',
+                        timer: 3000
+                    });
+                    return;
+                }
+            }
+            
+            // Submit the form
+            this.submit();
+        });
 
-        if (age < 1 || age > 120) {
-            e.preventDefault();
-            Swal.fire({
-                icon: 'error',
-                title: 'Invalid Age',
-                text: 'Please enter a valid age between 1 and 120.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-            closeModal('editModal');
-            return false;
-        }
-
-        if (!/^09\d{9}$/.test(contactNumber)) {
-            e.preventDefault();
-            Swal.fire({
-                icon: 'error',
-                title: 'Invalid Contact Number',
-                text: 'Contact number must be 11 digits and start with 09.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-            closeModal('editModal');
-            return false;
-        }
-    });
-
-    // ...existing code...
+        // Check face service on page load
+        document.addEventListener('DOMContentLoaded', async function() {
+            const serviceAvailable = await checkFaceService();
+            if (!serviceAvailable) {
+                console.warn('Face recognition service not available');
+            }
+        });
     </script>
 </body>
 </html>

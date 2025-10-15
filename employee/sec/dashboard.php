@@ -21,63 +21,125 @@ $pending_complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE sta
 $result = mysqli_query($connection, $pending_complaint_query);
 $stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
 
-// Count total appointments
-$appointment_query = "SELECT COUNT(*) as total FROM appointments";
-$result = mysqli_query($connection, $appointment_query);
-$stats['total_appointments'] = mysqli_fetch_assoc($result)['total'];
-
-// Count pending appointments
-$pending_appointment_query = "SELECT COUNT(*) as pending FROM appointments WHERE status = 'pending'";
-$result = mysqli_query($connection, $pending_appointment_query);
-$stats['pending_appointments'] = mysqli_fetch_assoc($result)['pending'];
-
 // Count total residents
 $residents_query = "SELECT COUNT(*) as total FROM residents";
 $result = mysqli_query($connection, $residents_query);
 $stats['total_residents'] = mysqli_fetch_assoc($result)['total'];
 
-// Get recent complaints
-$recent_complaints_query = "SELECT c.*, r.full_name FROM complaints c 
+// Get recent complaints - modified to show only last 7 days
+$recent_complaints_query = "SELECT c.*, r.full_name 
+                          FROM complaints c 
                           LEFT JOIN residents r ON c.resident_id = r.id 
-                          ORDER BY c.created_at DESC LIMIT 5";
+                          WHERE c.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+                          ORDER BY c.created_at DESC 
+                          LIMIT 5";
 $recent_complaints = mysqli_query($connection, $recent_complaints_query);
 
-// Get recent announcements
+// Get recent announcements - modified to show only last 7 days
 $recent_announcements_query = "SELECT a.*, u.full_name as created_by_name 
                               FROM announcements a 
                               LEFT JOIN users u ON a.created_by = u.id 
                               WHERE a.status = 'active' 
+                              AND a.created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
                               AND (a.expiry_date IS NULL OR a.expiry_date >= CURDATE())
                               ORDER BY a.created_at DESC 
                               LIMIT 5";
 $recent_announcements = mysqli_query($connection, $recent_announcements_query);
 
-// Update calendar events query
+// Update calendar events query to match community service events structure
+// Get both current and future events for calendar display
 $calendar_events_query = "
     SELECT 
         id,
         title,
-        event_date,
-        event_time as time,
-        event_type as type,
+        event_start_date,
+        event_end_date,
+        event_time,
         status,
-        (SELECT full_name FROM users WHERE id = created_by) as resident_name
-    FROM calendar_events 
-    WHERE event_date >= CURDATE() 
-    AND event_date <= DATE_ADD(CURDATE(), INTERVAL 30 DAY)
-    AND status = 'active'
-    ORDER BY event_date ASC, event_time ASC";
+        location
+    FROM events 
+    WHERE status IN ('upcoming', 'ongoing')
+    AND (
+        event_end_date >= CURDATE() 
+        OR (event_end_date IS NULL AND event_start_date >= CURDATE())
+        OR (event_end_date = '0000-00-00' AND event_start_date >= CURDATE())
+    )
+    ORDER BY event_start_date ASC, event_time ASC";
 
 $calendar_events = mysqli_query($connection, $calendar_events_query);
 
-// Build events_data array for client-side calendar (rewind result set)
+// Debug: Check if query executed successfully
+if (!$calendar_events) {
+    error_log("Calendar events query failed: " . mysqli_error($connection));
+}
+
+// Process events data: expand multi-day events into individual date entries (inclusive)
 $events_data = [];
+$events_ranges = []; // collect start/end ranges per event
+
 if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
-    mysqli_data_seek($calendar_events, 0);
     while ($ev = mysqli_fetch_assoc($calendar_events)) {
-        $events_data[] = $ev;
+        // Get start and end dates
+        $startRaw = $ev['event_start_date'] ?? '';
+        $endRaw = $ev['event_end_date'] ?? '';
+        
+        // Skip if no start date
+        if (empty($startRaw) || $startRaw === '0000-00-00') {
+            continue;
+        }
+
+        try {
+            $start = new DateTime($startRaw);
+        } catch (Exception $e) {
+            error_log("Invalid start date for event {$ev['id']}: {$startRaw}");
+            continue;
+        }
+
+        // Handle end date - if empty or invalid, use start date
+        if (empty($endRaw) || $endRaw === '0000-00-00') {
+            $end = clone $start;
+        } else {
+            try {
+                $end = new DateTime($endRaw);
+            } catch (Exception $e) {
+                error_log("Invalid end date for event {$ev['id']}: {$endRaw}");
+                $end = clone $start;
+            }
+        }
+
+        // Ensure end is not before start
+        if ($end < $start) {
+            $end = clone $start;
+        }
+
+        // Store the event range
+        $events_ranges[] = [
+            'id' => (int)$ev['id'],
+            'title' => $ev['title'],
+            'start' => $start->format('Y-m-d'),
+            'end' => $end->format('Y-m-d'),
+            'time' => $ev['event_time'] ?? '',
+            'location' => $ev['location'] ?? ''
+        ];
+
+        // Create entries for each day in the range (inclusive)
+        $period = new DatePeriod($start, new DateInterval('P1D'), (clone $end)->modify('+1 day'));
+        foreach ($period as $date) {
+            $events_data[] = [
+                'id' => (int)$ev['id'],
+                'title' => $ev['title'],
+                'event_date' => $date->format('Y-m-d'),
+                'time' => $ev['event_time'] ?? '',
+                'status' => $ev['status'] ?? '',
+                'location' => $ev['location'] ?? ''
+            ];
+        }
     }
 }
+
+// Debug output (remove after testing)
+error_log("Total events found: " . count($events_ranges));
+error_log("Total event days: " . count($events_data));
 
 ?>
 
@@ -327,11 +389,15 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             display: flex;
             align-items: center;
             transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
         }
 
         .stat-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 25px rgba(0,0,0,0.12);
+            background: #f8f9fa;
         }
 
         .stat-icon {
@@ -424,25 +490,34 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
         }
 
         .status-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 15px;
+            padding: 0.35rem 1rem;
+            border-radius: 20px;
             font-size: 0.75rem;
-            font-weight: bold;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
         }
 
         .status-pending {
             background: #fff3cd;
             color: #856404;
+            border: 1px solid rgba(133, 100, 4, 0.1);
         }
 
         .status-resolved {
             background: #d4edda;
             color: #155724;
+            border: 1px solid rgba(21, 87, 36, 0.1);
         }
 
-        .status-approved {
-            background: #d1ecf1;
-            color: #0c5460;
+        .status-inprogress, .status-in_progress {
+            background: #cce5ff;
+            color: #004085;
+            border: 1px solid rgba(0, 64, 133, 0.1);
         }
 
         .priority-badge {
@@ -472,18 +547,18 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             background: white;
             border-radius: 12px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-            overflow: hidden;
+            overflow: visible; /* CHANGED: Allow tooltips to overflow */
         }
 
         .calendar-header {
-            padding: 1.5rem;
+            padding: 1.25rem;
             background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
             color: white;
             text-align: center;
         }
 
         .calendar-title {
-            font-size: 1.3rem;
+            font-size: 1.2rem;
             font-weight: bold;
             margin-bottom: 0.5rem;
         }
@@ -492,7 +567,7 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-top: 1rem;
+            margin-top: 0.75rem;
         }
 
         .calendar-nav button {
@@ -503,6 +578,7 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             border-radius: 6px;
             cursor: pointer;
             transition: background 0.3s ease;
+            font-size: 0.95rem;
         }
 
         .calendar-nav button:hover {
@@ -511,6 +587,7 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
 
         .calendar-grid {
             padding: 0.5rem;
+            overflow: visible; /* CHANGED: Allow tooltips to overflow */
         }
 
         .calendar-days-header {
@@ -534,19 +611,23 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             display: grid;
             grid-template-columns: repeat(7, 1fr);
             gap: 2px;
+            overflow: visible; /* ADDED: Allow tooltips to overflow */
         }
 
         .calendar-day {
             background: white;
             border: 1px solid #e0e0e0;
-            min-height: 80px;
+            height: 80px;
             padding: 0.5rem;
             position: relative;
             transition: background 0.2s ease;
+            overflow: visible; /* CHANGED: Allow tooltips to overflow */
+            cursor: pointer;
         }
 
         .calendar-day:hover {
             background: #f8f9fa;
+            z-index: 100; /* INCREASED: Higher z-index for hover */
         }
 
         .calendar-day.today {
@@ -563,30 +644,184 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
         }
 
         .calendar-day-number {
-            font-size: 1rem;
+            font-size: 0.95rem;
             font-weight: bold;
             margin-bottom: 4px;
             color: #333;
         }
 
-        .calendar-event {
-            font-size: 0.7rem;
+        /* Container for events with hidden overflow */
+        .calendar-events-container {
+            max-height: 50px;
+            overflow: hidden;
+        }
+
+        /* ENHANCED: Hover tooltip for events */
+        .calendar-day-tooltip {
+            display: none;
+            position: absolute;
+            min-width: 280px;
+            max-width: 380px;
+            max-height: 400px;
+            overflow-y: auto;
+            background: white;
+            border: 2px solid #3498db;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+            z-index: 2000; /* INCREASED: Very high z-index */
+            padding: 0.75rem;
+            pointer-events: none; /* ADDED: Don't block clicks initially */
+        }
+
+        /* ADDED: Enable pointer events when hovering the day */
+        .calendar-day:hover .calendar-day-tooltip {
+            pointer-events: auto;
+        }
+
+        /* DEFAULT: Position tooltip below and to the left */
+        .calendar-day-tooltip {
+            top: 100%;
+            left: 0;
+            margin-top: 5px;
+        }
+
+        /* Position tooltip above if day is in bottom rows */
+        .calendar-day.tooltip-top .calendar-day-tooltip {
+            bottom: 100%;
+            top: auto;
+            margin-top: 0;
+            margin-bottom: 5px;
+        }
+
+        /* Position tooltip to the right if day is on left edge */
+        .calendar-day.tooltip-right .calendar-day-tooltip {
+            left: auto;
+            right: 0;
+        }
+
+        /* ADDED: Center positioning for middle columns */
+        .calendar-day.tooltip-center .calendar-day-tooltip {
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .calendar-day.tooltip-top.tooltip-center .calendar-day-tooltip {
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        /* Show tooltip on hover */
+        .calendar-day:hover .calendar-day-tooltip {
+            display: block !important;
+            animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* ADDED: Different animation for centered tooltips */
+        .calendar-day.tooltip-center:hover .calendar-day-tooltip {
+            animation: fadeInCenter 0.2s ease;
+        }
+
+        @keyframes fadeInCenter {
+            from {
+                opacity: 0;
+                transform: translate(-50%, -5px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+
+        .tooltip-event-item {
+            padding: 0.6rem;
+            margin-bottom: 0.6rem;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+            transition: all 0.2s ease;
+        }
+
+        .tooltip-event-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .tooltip-event-item:hover {
+            background: #e3f2fd;
+            border-left-color: #1976d2;
+            transform: translateX(3px);
+            cursor: pointer;
+        }
+
+        .tooltip-event-title {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 0.9rem;
+            margin-bottom: 0.3rem;
+            line-height: 1.3;
+        }
+
+        .tooltip-event-details {
+            font-size: 0.8rem;
             color: #666;
-            margin-bottom: 2px;
-            line-height: 1.2;
-            word-wrap: break-word;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+
+        .tooltip-event-details i {
+            width: 16px;
+            margin-right: 6px;
+            color: #3498db;
+        }
+
+        /* Calendar highlight for event ranges */
+        .calendar-day.event-range {
+            background: linear-gradient(135deg, #4fc3f7 0%, #29b6f6 100%) !important;
+            border: 2px solid #0288d1 !important;
+            box-shadow: 0 2px 8px rgba(41, 182, 246, 0.3) !important;
+        }
+
+        /* when today is also an event day, make it visible */
+        .calendar-day.event-range.today {
+            background: linear-gradient(135deg, #ffd54f 0%, #ffca28 100%) !important;
+            border: 3px solid #f57c00 !important;
+            box-shadow: 0 4px 12px rgba(255, 193, 7, 0.5) !important;
+        }
+
+        /* Make event pill more readable */
+        .calendar-event {
+            background: #0d47a1 !important;
+            color: white !important;
+            border-left: 3px solid #fff !important;
+            padding: 4px 8px !important;
+            margin-bottom: 3px !important;
+            border-radius: 4px !important;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.7rem;
+            font-weight: 600;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+            text-shadow: 0 1px 1px rgba(0,0,0,0.2);
         }
 
         .calendar-event:hover {
-            overflow: visible;
-            white-space: normal;
-            z-index: 10;
-            background: #fff;
-            padding: 2px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: #1565c0 !important;
+            transform: translateX(2px) scale(1.01);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3) !important;
         }
 
         .upcoming-events {
@@ -613,16 +848,16 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
         }
 
         .upcoming-list {
-    max-height: 300px; /* Reduced from 400px */
-    overflow-y: auto;
-}
+            max-height: 250px;
+            overflow-y: auto;
+        }
 
         .upcoming-item {
-            padding: 1rem 1.5rem;
+            padding: 0.75rem 1rem;
             border-bottom: 1px solid #f5f5f5;
             display: flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.75rem;
         }
 
         .upcoming-item:last-child {
@@ -631,20 +866,20 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
 
         .upcoming-date {
             background: #f8f9fa;
-            padding: 0.5rem;
-            border-radius: 8px;
+            padding: 0.4rem;
+            border-radius: 6px;
             text-align: center;
-            min-width: 60px;
+            min-width: 50px;
         }
 
         .upcoming-date-day {
-            font-size: 1.2rem;
+            font-size: 1rem;
             font-weight: bold;
             color: #333;
         }
 
         .upcoming-date-month {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             color: #666;
         }
 
@@ -653,13 +888,13 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
         }
 
         .upcoming-info h4 {
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             color: #333;
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.2rem;
         }
 
         .upcoming-info p {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: #666;
         }
 
@@ -721,27 +956,34 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             }
 
             .calendar-day {
-                min-height: 50px;
-                padding: 0.25rem;
+                min-height: 60px;
+                padding: 2px;
+            }
+            
+            .calendar-day-number {
+                font-size: 0.8rem;
+            }
+            
+            .calendar-event {
+                font-size: 0.6rem;
+            }
+
+            /* ADDED: Better mobile tooltip positioning */
+            .calendar-day-tooltip {
+                min-width: 220px;
+                max-width: 90vw;
+            }
+
+            /* On mobile, always center tooltips for better visibility */
+            .calendar-day.tooltip-top .calendar-day-tooltip {
+                left: 50%;
+                right: auto;
+                transform: translateX(-50%);
             }
 
             .upcoming-item {
                 padding: 0.75rem 1rem;
             }
-         @media (max-width: 768px) {
-    .calendar-day {
-        min-height: 60px;
-        padding: 2px;
-    }
-    
-    .calendar-day-number {
-        font-size: 0.8rem;
-    }
-    
-    .calendar-event {
-        font-size: 0.6rem;
-    }
-}
         }
 
         /* Overlay for mobile */
@@ -866,14 +1108,9 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
         </div>
 
         <div class="content-area">
-            <div class="dashboard-header">
-                <h1 class="dashboard-title">Welcome back, <?php echo $_SESSION['full_name']; ?>!</h1>
-                <p class="dashboard-subtitle">Here's what's happening in your barangay today</p>
-            </div>
-
             <!-- Statistics Overview -->
             <div class="stats-grid">
-                <div class="stat-card">
+                <a href="complaints.php" class="stat-card">
                     <div class="stat-icon" style="color: #e74c3c;">
                         <i class="fas fa-exclamation-circle"></i>
                     </div>
@@ -881,19 +1118,9 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
                         <h3><?php echo $stats['pending_complaints']; ?></h3>
                         <p>Pending Complaints</p>
                     </div>
-                </div>
+                </a>
                 
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #f39c12;">
-                        <i class="fas fa-clock"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $stats['pending_appointments']; ?></h3>
-                        <p>Pending Appointments</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
+                <a href="resident-profiling.php" class="stat-card">
                     <div class="stat-icon" style="color: #27ae60;">
                         <i class="fas fa-users"></i>
                     </div>
@@ -901,17 +1128,7 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
                         <h3><?php echo $stats['total_residents']; ?></h3>
                         <p>Total Residents</p>
                     </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #3498db;">
-                        <i class="fas fa-check-circle"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $stats['total_complaints'] + $stats['total_appointments']; ?></h3>
-                        <p>Total Records</p>
-                    </div>
-                </div>
+                </a>
             </div>
 
             <!-- Dashboard Layout -->
@@ -935,7 +1152,14 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
                                                 <p>by <?php echo htmlspecialchars($complaint['full_name'] ?? 'Unknown'); ?> • <?php echo date('M j, Y', strtotime($complaint['created_at'])); ?></p>
                                             </div>
                                             <span class="status-badge status-<?php echo $complaint['status']; ?>">
-                                                <?php echo ucfirst($complaint['status']); ?>
+                                                <?php if ($complaint['status'] == 'pending'): ?>
+                                                    <i class="fas fa-clock"></i>
+                                                <?php elseif ($complaint['status'] == 'in_progress' || $complaint['status'] == 'inprogress'): ?>
+                                                    <i class="fas fa-spinner"></i>
+                                                <?php elseif ($complaint['status'] == 'resolved'): ?>
+                                                    <i class="fas fa-check"></i>
+                                                <?php endif; ?>
+                                                <?php echo ucfirst(str_replace('_', ' ', $complaint['status'])); ?>
                                             </span>
                                         </div>
                                     <?php endwhile; ?>
@@ -1022,8 +1246,33 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
         let currentMonth = currentDate.getMonth();
         let currentYear = currentDate.getFullYear();
 
-        // Events data from PHP
+        // Events data from PHP (per-day entries)
         const eventsData = <?php echo json_encode($events_data ?? []); ?>;
+        // --- NEW: ranges used to highlight full event spans ---
+        const eventsRanges = <?php echo json_encode($events_ranges ?? []); ?>;
+
+        // helper to pad month/day
+        function pad(n){ return n < 10 ? '0' + n : String(n); }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        // Helper: check if a date (YYYY-MM-DD) falls within any event range
+        function isDateInAnyRange(dateStr) {
+            for (let i = 0; i < eventsRanges.length; i++) {
+                const r = eventsRanges[i];
+                if (!r.start || !r.end) continue;
+                if (dateStr >= r.start && dateStr <= r.end) return true;
+            }
+            return false;
+        }
 
         function renderCalendar() {
             const monthNames = ["January", "February", "March", "April", "May", "June",
@@ -1036,6 +1285,7 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             const daysInPrevMonth = new Date(currentYear, currentMonth, 0).getDate();
             
             let calendarHTML = '';
+            let dayCounter = 0; // ADDED: Track position for better tooltip placement
             
             // Previous month's trailing days
             for (let i = firstDay - 1; i >= 0; i--) {
@@ -1043,31 +1293,108 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
                 calendarHTML += `<div class="calendar-day other-month">
                     <div class="calendar-day-number">${day}</div>
                 </div>`;
+                dayCounter++;
             }
             
             // Current month days
             for (let day = 1; day <= daysInMonth; day++) {
                 const date = new Date(currentYear, currentMonth, day);
-                const dateString = date.toISOString().split('T')[0];
-                const isToday = date.toDateString() === new Date().toDateString();
-                
-                // Get events for this day
-                const dayEvents = eventsData.filter(event => event.event_date === dateString);
-                
+                const dateString = `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+                const isToday = (new Date()).getFullYear() === date.getFullYear() &&
+                                (new Date()).getMonth() === date.getMonth() &&
+                                (new Date()).getDate() === date.getDate();
+
+                // collect unique events for this date (dedupe by id)
+                const uniqueEvents = {};
+                for (let i = 0; i < eventsData.length; i++) {
+                    const ev = eventsData[i];
+                    if (ev.event_date === dateString) uniqueEvents[ev.id] = ev;
+                }
+                const dayEvents = Object.values(uniqueEvents);
+
                 let eventsHTML = '';
-                dayEvents.slice(0, 2).forEach(event => { // Limit to 2 events per day
-                    // include data-id so we can navigate to the event detail on click
-                    eventsHTML += `<div class="calendar-event" data-id="${event.id}" title="${event.title}">${event.title}</div>`;
-                });
+                let tooltipHTML = '';
                 
-                if (dayEvents.length > 2) {
-                    eventsHTML += `<div class="calendar-event calendar-more" data-date="${dateString}" style="font-style: italic; color: #999; cursor:pointer;">+${dayEvents.length - 2} more</div>`;
+                if (dayEvents.length > 0) {
+                    eventsHTML = '<div class="calendar-events-container">';
+                    // Show only first event to save space
+                    const firstEvent = dayEvents[0];
+                    eventsHTML += `
+                        <div class="calendar-event" data-id="${firstEvent.id}" title="${escapeHtml(firstEvent.title)}">
+                            ${escapeHtml(firstEvent.title)}
+                        </div>`;
+                    
+                    // Show indicator if there are more events
+                    if (dayEvents.length > 1) {
+                        eventsHTML += `<div style="font-size:0.65rem;color:#1976d2;font-weight:600;margin-top:2px;">+${dayEvents.length - 1} more event${dayEvents.length > 2 ? 's' : ''}</div>`;
+                    }
+                    eventsHTML += '</div>';
+
+                    // Build tooltip with ALL events (always show tooltip if there are events)
+                    tooltipHTML = '<div class="calendar-day-tooltip">';
+                    tooltipHTML += `<div style="font-weight:700;color:#2c3e50;margin-bottom:0.5rem;padding-bottom:0.5rem;border-bottom:2px solid #3498db;">${dayEvents.length} Event${dayEvents.length > 1 ? 's' : ''} on this day</div>`;
+                    
+                    dayEvents.forEach((event, index) => {
+                        let timeTxt = '';
+                        if (event.time) {
+                            const m = event.time.match(/^(\d{1,2}:\d{2})/);
+                            if (m) timeTxt = m[1];
+                        }
+                        
+                        tooltipHTML += `
+                            <div class="tooltip-event-item" data-event-id="${event.id}">
+                                <div class="tooltip-event-title">${index + 1}. ${escapeHtml(event.title)}</div>
+                                <div class="tooltip-event-details">
+                                    ${timeTxt ? `<span><i class="far fa-clock"></i>${timeTxt}</span>` : '<span><i class="far fa-clock"></i>All day</span>'}
+                                    ${event.location ? `<span><i class="fas fa-map-marker-alt"></i>${escapeHtml(event.location)}</span>` : ''}
+                                </div>
+                            </div>`;
+                    });
+                    tooltipHTML += '</div>';
+                }
+
+                // Add classes for highlighting
+                const classes = ['calendar-day'];
+                if (isToday) classes.push('today');
+
+                // Check if this date is in any event range
+                const isInRange = isDateInAnyRange(dateString);
+                
+                // Add event-range class if date is within any event's date range
+                if (isInRange) {
+                    classes.push('event-range');
+                }
+
+                // ENHANCED: Calculate tooltip position based on row and column
+                const currentRow = Math.floor(dayCounter / 7);
+                const totalRows = Math.ceil((firstDay + daysInMonth) / 7);
+                const dayOfWeek = dayCounter % 7;
+                
+                // If in last 2 rows, show tooltip above
+                if (currentRow >= totalRows - 2) {
+                    classes.push('tooltip-top');
                 }
                 
-                calendarHTML += `<div class="calendar-day ${isToday ? 'today' : ''}">
-                    <div class="calendar-day-number">${day}</div>
-                    ${eventsHTML}
-                </div>`;
+                // ENHANCED: Better horizontal positioning
+                if (dayOfWeek === 0 || dayOfWeek === 1) {
+                    // First two columns - align to left
+                    // No additional class needed (default is left)
+                } else if (dayOfWeek === 5 || dayOfWeek === 6) {
+                    // Last two columns - align to right
+                    classes.push('tooltip-right');
+                } else {
+                    // Middle columns - center the tooltip
+                    classes.push('tooltip-center');
+                }
+
+                calendarHTML += `
+                    <div class="${classes.join(' ')}" data-date="${dateString}">
+                        <div class="calendar-day-number">${day}</div>
+                        ${eventsHTML}
+                        ${tooltipHTML}
+                    </div>`;
+                
+                dayCounter++;
             }
             
             // Next month's leading days
@@ -1084,36 +1411,30 @@ if ($calendar_events && mysqli_num_rows($calendar_events) > 0) {
             // Attach click handlers to events after render
             document.querySelectorAll('.calendar-event[data-id]').forEach(el => {
                 el.addEventListener('click', function(e) {
+                    e.stopPropagation();
                     const id = this.getAttribute('data-id');
                     if (id) {
-                        // navigate to your events page for this event (adjust path if needed)
-                        window.location.href = `events.php?id=${encodeURIComponent(id)}`;
+                        window.location.href = `community_service.php?id=${encodeURIComponent(id)}`;
                     }
                 });
             });
 
-            // "+N more" click opens a modal showing all events for that date
-            document.querySelectorAll('.calendar-more').forEach(el => {
-                el.addEventListener('click', function() {
-                    const date = this.getAttribute('data-date');
-                    const list = eventsData.filter(ev => ev.event_date === date);
-                    if (!list.length) return;
-                    let html = '<div style="text-align:left;">';
-                    list.forEach(ev => {
-                        const time = ev.time ? ` (${new Date('1970-01-01T' + ev.time + 'Z').toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})})` : '';
-                        html += `<div style="margin-bottom:8px;">
-                                    <a href="events.php?id=${encodeURIComponent(ev.id)}" style="font-weight:600; color:#00426D; text-decoration:none;">${ev.title}</a>
-                                    <div style="font-size:0.9rem; color:#666;">${ev.event_date}${time}</div>
-                                 </div>`;
-                    });
-                    html += '</div>';
-                    Swal.fire({
-                        title: `Events on ${date}`,
-                        html: html,
-                        width: 600,
-                        showCloseButton: true,
-                        showConfirmButton: false
-                    });
+            // Attach click handlers to tooltip event items
+            document.querySelectorAll('.tooltip-event-item[data-event-id]').forEach(el => {
+                el.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const id = this.getAttribute('data-event-id');
+                    if (id) {
+                        window.location.href = `community_service.php?id=${encodeURIComponent(id)}`;
+                    }
+                });
+                // Add hover effect
+                el.style.cursor = 'pointer';
+                el.addEventListener('mouseenter', function() {
+                    this.style.background = '#e3f2fd';
+                });
+                el.addEventListener('mouseleave', function() {
+                    this.style.background = '#f8f9fa';
                 });
             });
         }

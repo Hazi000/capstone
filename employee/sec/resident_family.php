@@ -951,7 +951,7 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
         /* Action Buttons Section */
         .action-buttons {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end; /* Changed: align buttons to the right */
             align-items: center;
             margin-bottom: 2rem;
             flex-wrap: wrap;
@@ -1367,7 +1367,8 @@ $pending_appointments = mysqli_fetch_assoc($result)['pending'];
                 <div class="alert alert-error"><?php echo $error_message; ?></div>
             <?php endif; ?>
 
-            <div class="action-buttons">
+            <!-- Action Buttons -->
+            <div class="action-buttons" style="justify-content: flex-end;"> <!-- Changed: added justify-content -->
                 <button class="btn btn-primary" onclick="showAddFamilyModal()">
                     <i class="fas fa-plus"></i> Set New Family Unit
                 </button>

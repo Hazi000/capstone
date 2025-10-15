@@ -441,10 +441,18 @@ $complaint_query = "SELECT COUNT(*) as pending FROM complaints WHERE status = 'p
 $result = mysqli_query($connection, $complaint_query);
 $stats['pending_complaints'] = mysqli_fetch_assoc($result)['pending'];
 
-// Get volunteer statistics
+// --- NEW: auto-complete past events (mark as completed when end date < today) ---
+@mysqli_query($connection, "
+    UPDATE events
+    SET status = 'completed', updated_at = NOW()
+    WHERE COALESCE(event_end_date, event_start_date) < CURDATE()
+      AND status IN ('upcoming','ongoing')
+");
+
+// --- UPDATED: volunteer statistics (active events must have end date >= today) ---
 $volunteer_stats = [];
 $volunteer_stats_query = "SELECT 
-    (SELECT COUNT(*) FROM events WHERE status IN ('upcoming', 'ongoing')) as active_events,
+    (SELECT COUNT(*) FROM events WHERE status IN ('upcoming', 'ongoing') AND COALESCE(event_end_date, event_start_date) >= CURDATE()) as active_events,
     (SELECT COUNT(DISTINCT resident_id) FROM volunteer_registrations WHERE LOWER(COALESCE(status,'')) IN ('approved','attended')) as total_volunteers,
     (SELECT COUNT(*) FROM volunteer_registrations WHERE LOWER(COALESCE(status,'')) = 'pending') as pending_applications";
 
@@ -452,29 +460,51 @@ $volunteer_result = mysqli_query($connection, $volunteer_stats_query);
 $volunteer_stats = mysqli_fetch_assoc($volunteer_result);
 
 // Get upcoming events with pagination - Modified to exclude past events
-$items_per_page = 6;
+$items_per_page = 8; // Changed from 6 to 8
 $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $offset = ($page - 1) * $items_per_page;
 
-// Get total number of events for pagination - Only upcoming and ongoing events
-$total_query = "SELECT COUNT(*) as total FROM events 
-                WHERE status IN ('upcoming', 'ongoing') 
-                AND event_start_date >= CURDATE()";
+// Initialize filter before queries
+$filter = isset($_GET['filter']) ? $_GET['filter'] : 'active';
+
+// Get total number of events for pagination - Account for current filter
+$total_query = "SELECT COUNT(*) as total FROM events e ";
+$total_query .= match($filter) {
+    'completed' => "WHERE status IN ('completed', 'cancelled')",
+    'all' => "WHERE 1=1",
+    default => "WHERE status IN ('upcoming', 'ongoing') 
+                AND COALESCE(event_end_date, event_start_date) >= CURDATE()"
+};
+
 $total_result = mysqli_query($connection, $total_query);
 $total_events = mysqli_fetch_assoc($total_result)['total'];
 $total_pages = ceil($total_events / $items_per_page);
 
-// Modified events query with LIMIT and OFFSET - Only upcoming and ongoing events
+// Modified events query with LIMIT and OFFSET - Only upcoming and ongoing events (still active: end date >= today)
+$where_clause = match($filter) {
+    'completed' => "WHERE e.status IN ('completed', 'cancelled')",
+    'all' => "WHERE 1=1",
+    default => "WHERE e.status IN ('upcoming', 'ongoing') 
+                AND COALESCE(e.event_end_date, e.event_start_date) >= CURDATE()"
+};
+
 $events_query = "SELECT 
     e.*,
-    COUNT(DISTINCT CASE WHEN LOWER(COALESCE(vr.status,'')) IN ('approved','attended') THEN vr.id ELSE NULL END) as volunteer_count,
+    COUNT(DISTINCT CASE WHEN LOWER(COALESCE(vr.status,'')) IN ('approved','attended') 
+        THEN vr.id ELSE NULL END) as volunteer_count,
     SUM(CASE WHEN LOWER(COALESCE(vr.status,'')) = 'pending' THEN 1 ELSE 0 END) as pending_count
 FROM events e
 LEFT JOIN volunteer_registrations vr ON e.id = vr.event_id
-WHERE e.status IN ('upcoming', 'ongoing') 
-AND e.event_start_date >= CURDATE()
+{$where_clause}
 GROUP BY e.id
-ORDER BY e.event_start_date ASC
+ORDER BY 
+    CASE e.status 
+        WHEN 'upcoming' THEN 1
+        WHEN 'ongoing' THEN 2
+        WHEN 'completed' THEN 3
+        WHEN 'cancelled' THEN 4
+    END,
+    e.event_start_date ASC
 LIMIT ? OFFSET ?";
 
 $stmt = mysqli_prepare($connection, $events_query);
@@ -1025,21 +1055,6 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
         }
 
         .event-title {
-            font-size: 1.2rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
-        }
-
-        .event-date {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.9rem;
-            opacity: 0.9;
-        }
-
-        .event-body {
-            padding: 1.5rem;
         }
 
         .event-info {
@@ -1606,41 +1621,30 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 1rem;
-    margin: 2rem 0;
-}
-
-.page-numbers {
-    display: flex;
+    padding: 1.5rem;
     gap: 0.5rem;
 }
 
-.page-number {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-    background: #fff;
-    color: #333;
-    text-decoration: none;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-}
-
-.page-number:hover {
-    background: #e9ecef;
-    color: #333;
-}
-
-.page-number.active {
-    background: #3498db;
-    color: #fff;
-}
-
-.pagination .btn {
+.pagination a,
+.pagination span {
     padding: 0.5rem 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    text-decoration: none;
+    color: #333;
+    transition: all 0.3s ease;
+}
+
+.pagination a:hover {
+    background: #3498db;
+    color: white;
+    border-color: #3498db;
+}
+
+.pagination .current {
+    background: #3498db;
+    color: white;
+    border-color: #3498db;
 }
     </style>
 </head>
@@ -1787,17 +1791,10 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                 <?php unset($_SESSION['error_message']); ?>
             <?php endif; ?>
 
-            <!-- View Tabs -->
-            <div class="view-tabs">
-                <div class="view-tab active">
-                    <i class="fas fa-calendar-check"></i>
-                    Community Events
-                </div>
-            </div>
 
             <!-- Statistics Overview -->
             <div class="stats-grid">
-                <div class="stat-card">
+                <div class="stat-card" id="activeEventsCard" onclick="filterActiveEvents()" style="cursor:pointer;" role="button" tabindex="0">
                     <div class="stat-icon" style="color: #3498db;">
                         <i class="fas fa-calendar-check"></i>
                     </div>
@@ -1807,23 +1804,13 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                     </div>
                 </div>
                 
-                <div class="stat-card">
+                <div class="stat-card" id="totalVolunteersCard" onclick="showTotalVolunteers()" style="cursor:pointer;" role="button" tabindex="0">
                     <div class="stat-icon" style="color: #27ae60;">
                         <i class="fas fa-users"></i>
                     </div>
                     <div class="stat-content">
                         <h3><?php echo $volunteer_stats['total_volunteers'] ?? 0; ?></h3>
                         <p>Total Volunteers</p>
-                    </div>
-                </div>
-                
-                <div class="stat-card">
-                    <div class="stat-icon" style="color: #f39c12;">
-                        <i class="fas fa-hourglass-half"></i>
-                    </div>
-                    <div class="stat-content">
-                        <h3><?php echo $volunteer_stats['pending_applications'] ?? 0; ?></h3>
-                        <p>Pending Applications</p>
                     </div>
                 </div>
             </div>
@@ -1885,11 +1872,27 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
             <!-- Upcoming Events Section -->
             <div class="section-header">
                 <h2 class="section-title">Upcoming Community Events</h2>
-                <button type="button" class="btn btn-primary" onclick="openEventModal('create')">
-                    <i class="fas fa-plus"></i> Create New Event
-                </button>
+                <div class="section-actions" style="display:flex; align-items:center; gap:1rem;">
+                    <div class="filter-wrapper" style="position:relative;">
+                        <form method="get" id="eventFilterForm" style="margin:0;">
+                            <input type="hidden" name="page" value="<?php echo $page; ?>">
+                            <select name="filter" id="eventStatusFilter" class="form-control" 
+                                    style="padding-right:2.5rem; min-width:200px; height:40px; background-color:#f8f9fa; border:1px solid #dee2e6; appearance:none;" 
+                                    onchange="document.getElementById('eventFilterForm').submit();">
+                                <option value="active" <?php echo $filter==='active' ? 'selected' : ''; ?>>Active Events</option>
+                                <option value="completed" <?php echo $filter==='completed' ? 'selected' : ''; ?>>Completed</option>
+                                <option value="all" <?php echo $filter==='all' ? 'selected' : ''; ?>>All Events</option>
+                            </select>
+                            <i class="fas fa-filter" style="position:absolute; right:10px; top:50%; transform:translateY(-50%); color:#6c757d; pointer-events:none;"></i>
+                        </form>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="openEventModal('create')">
+                        <i class="fas fa-plus"></i> Create New Event
+                    </button>
+                </div>
             </div>
 
+            <!-- Upcoming Events Table (filtered) -->
             <div class="events-grid">
             <?php 
             if (mysqli_num_rows($events_result) > 0): 
@@ -1958,14 +1961,14 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
             <?php if ($total_pages > 1): ?>
             <div class="pagination">
                 <?php if ($page > 1): ?>
-                    <a href="?page=<?php echo ($page - 1); ?>" class="btn btn-primary">
+                    <a href="?page=<?php echo ($page - 1); ?>&filter=<?php echo $filter; ?>" class="btn btn-primary">
                         <i class="fas fa-chevron-left"></i> Previous
                     </a>
                 <?php endif; ?>
                 
                 <div class="page-numbers">
                     <?php for ($i = 1; $i <= $total_pages; $i++): ?>
-                        <a href="?page=<?php echo $i; ?>" 
+                        <a href="?page=<?php echo $i; ?>&filter=<?php echo $filter; ?>" 
                            class="page-number <?php echo $i === $page ? 'active' : ''; ?>">
                             <?php echo $i; ?>
                         </a>
@@ -1973,7 +1976,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
                 </div>
 
                 <?php if ($page < $total_pages): ?>
-                    <a href="?page=<?php echo ($page + 1); ?>" class="btn btn-primary">
+                    <a href="?page=<?php echo ($page + 1); ?>&filter=<?php echo $filter; ?>" class="btn btn-primary">
                         Next <i class="fas fa-chevron-right"></i>
                     </a>
                 <?php endif; ?>
@@ -2058,6 +2061,7 @@ if (isset($_GET['event_id']) && !empty($_GET['event_id'])) {
             
             <p class="certificate-text">
                 We express our sincere gratitude for your selfless service and valuable contribution
+               
                 to the betterment of our community.
             </p>
         </div>
@@ -2353,7 +2357,55 @@ function hideModal(modalId) {
     }
 }
 
-// Updated showVolunteerApplications function
+// NEW: defensive helper to normalize any "Mark Hours" text (prevents runtime errors)
+function normalizeMarkHoursButtons(container) {
+	try {
+		if (!container) container = document;
+		const buttons = container.querySelectorAll('button, a');
+		buttons.forEach(el => {
+			let changed = false;
+			el.childNodes.forEach(node => {
+				if (node.nodeType === Node.TEXT_NODE && node.nodeValue && node.nodeValue.includes('Mark Hours')) {
+					node.nodeValue = node.nodeValue.replace(/Mark Hours/g, 'Attendance');
+					changed = true;
+				}
+			});
+			['title','aria-label'].forEach(attr => {
+				const v = el.getAttribute(attr);
+				if (v && v.includes('Mark Hours')) {
+					el.setAttribute(attr, v.replace(/Mark Hours/g, 'Attendance'));
+					changed = true;
+				}
+			});
+			if (!changed && el.innerText && el.innerText.includes('Mark Hours')) {
+				el.innerHTML = el.innerHTML.replace(/Mark Hours/g, 'Attendance');
+			}
+		});
+	} catch (e) {
+		console.error('normalizeMarkHoursButtons error', e);
+	}
+}
+
+// NEW: delegated click handler for "View History" buttons rendered by get_total_volunteers.php
+document.addEventListener('click', function(e){
+	try {
+		const btn = e.target.closest('.view-history-btn');
+		if (!btn) return;
+		e.preventDefault();
+		const residentId = btn.getAttribute('data-resident-id');
+		const residentName = btn.getAttribute('data-resident-name') || btn.dataset.residentName || 'Resident';
+		if (!residentId) {
+			console.warn('view-history button missing resident id');
+			return;
+		}
+		// call existing function to open modal & fetch history
+		showVolunteerHistory(residentId, residentName);
+	} catch (err) {
+		console.error('History button handler error', err);
+	}
+});
+
+		// Updated showVolunteerApplications function
 function showVolunteerApplications(eventId) {
     const list = document.getElementById('applicationsList');
     showModal('applicationsModal');
@@ -2652,38 +2704,75 @@ function showEventVolunteers(eventId) {
         });
     });
 
-// add helper function near other JS helpers
-function normalizeMarkHoursButtons(container) {
-    try {
-        if (!container) container = document;
-        const buttons = container.querySelectorAll('button, a'); // handle <a> as well if used
-        buttons.forEach(el => {
-            // normalize textual occurrences of "Mark Hours" -> "Attendance"
-            // preserve icons and other HTML by replacing text nodes only
-            let changed = false;
-            el.childNodes.forEach(node => {
-                if (node.nodeType === Node.TEXT_NODE && node.nodeValue && node.nodeValue.trim().includes('Mark Hours')) {
-                    node.nodeValue = node.nodeValue.replace(/Mark Hours/g, 'Attendance');
-                    changed = true;
-                }
-            });
-            // also check title / aria-label attributes
-            ['title','aria-label'].forEach(attr => {
-                const v = el.getAttribute(attr);
-                if (v && v.includes('Mark Hours')) {
-                    el.setAttribute(attr, v.replace(/Mark Hours/g, 'Attendance'));
-                    changed = true;
-                }
-            });
-            // if no text node matched but innerText contains the phrase (e.g. wrapped in spans), do a safe innerHTML replace
-            if (!changed && el.innerText && el.innerText.includes('Mark Hours')) {
-                // attempt to replace only the visible text portion while preserving HTML structure where possible
-                el.innerHTML = el.innerHTML.replace(/Mark Hours/g, 'Attendance');
-            }
-        });
-    } catch (e) {
-        console.error('normalizeMarkHoursButtons error', e);
-    }
+// Replace the existing showTotalVolunteers function with this updated version
+function showTotalVolunteers() {
+    const list = document.getElementById('eventVolunteersList');
+    const modalTitle = document.querySelector('#eventVolunteersModal .modal-title');
+    if (modalTitle) modalTitle.textContent = 'All Volunteers';
+
+    showModal('eventVolunteersModal');
+    list.innerHTML = '<div class="loading" style="text-align:center; padding:2rem;"><i class="fas fa-spinner fa-spin"></i> Loading volunteers...</div>';
+
+    fetch('get_total_volunteers.php', {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.text();
+    })
+    .then(html => {
+        if (html.trim() === '') {
+            throw new Error('Empty response received');
+        }
+        list.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        list.innerHTML = `
+            <div class="empty-state" style="text-align:center; padding:2rem;">
+                <i class="fas fa-exclamation-circle" style="font-size:3rem; color:#dc3545; margin-bottom:1rem;"></i>
+                <h3>Error Loading Volunteers</h3>
+                <p>Failed to load volunteers. Please try again.</p>
+            </div>`;
+    });
+}
+
+function showVolunteerHistory(residentId, residentName) {
+    const list = document.getElementById('eventVolunteersList');
+    const modalTitle = document.querySelector('#eventVolunteersModal .modal-title');
+    if (modalTitle) modalTitle.textContent = `Volunteer History: ${residentName}`;
+
+    showModal('eventVolunteersModal');
+    list.innerHTML = '<div class="loading" style="text-align:center; padding:2rem;"><i class="fas fa-spinner fa-spin"></i> Loading history...</div>';
+
+    fetch(`get_volunteer_history.php?resident_id=${residentId}`, {
+        method: 'GET',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Network response was not ok');
+        return response.text();
+    })
+    .then(html => {
+        if (html.trim() === '') throw new Error('Empty response received');
+        list.innerHTML = html;
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        list.innerHTML = `
+            <div class="empty-state" style="text-align:center; padding:2rem;">
+                <i class="fas fa-exclamation-circle" style="font-size:3rem; color:#dc3545; margin-bottom:1rem;"></i>
+                <h3>Error Loading History</h3>
+                <p>Failed to load volunteer history. Please try again.</p>
+            </div>`;
+    });
 }
 	</script>
 </body>

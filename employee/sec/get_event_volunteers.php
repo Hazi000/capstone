@@ -59,52 +59,67 @@ $event_result = mysqli_stmt_get_result($stmt);
 $event = mysqli_fetch_assoc($event_result);
 
 // Get volunteers for this event
-$sql = "SELECT vr.id, vr.registration_date, vr.status, r.full_name, 
-        COALESCE(vr.hours_served, 0) as hours_served
+$sql = "SELECT 
+            vr.id,
+            r.full_name,
+            r.contact_number,
+            r.email,
+            vr.registration_date,
+            vr.status,
+            vr.attended_at
         FROM volunteer_registrations vr
-        JOIN residents r ON vr.resident_id = r.id 
-        WHERE vr.event_id = ?
-        ORDER BY r.full_name ASC";
-        
+        LEFT JOIN residents r ON vr.resident_id = r.id
+        WHERE vr.event_id = ? 
+        AND vr.status IN ('approved', 'attended')
+        ORDER BY 
+            CASE vr.status 
+                WHEN 'attended' THEN 1
+                WHEN 'approved' THEN 2
+            END,
+            r.full_name ASC";
+
 $stmt = mysqli_prepare($connection, $sql);
 mysqli_stmt_bind_param($stmt, "i", $event_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 
-if (mysqli_num_rows($result) > 0) {
+if ($result && mysqli_num_rows($result) > 0) {
     echo "<h3>Volunteers for: " . htmlspecialchars($event['title']) . "</h3>";
     echo "<div class='table-container' style='margin-top: 1rem;'>";
     echo "<table class='table'>";
     echo "<thead>
             <tr>
                 <th>Name</th>
+                <th>Contact Info</th>
+                <th>Registration Date</th>
                 <th>Status</th>
-                <th>Hours Served</th>
                 <th>Actions</th>
             </tr>
           </thead><tbody>";
 
     while ($row = mysqli_fetch_assoc($result)) {
-        echo "<tr>";
-        echo "<td>" . htmlspecialchars($row['full_name']) . "</td>";
-        echo "<td><span class='status-badge status-" . strtolower($row['status']) . "'>" 
-             . ucfirst($row['status']) . "</span></td>";
-        echo "<td>" . ($row['hours_served'] > 0 ? htmlspecialchars($row['hours_served']) : '-') . "</td>";
-        echo "<td class='table-actions'>";
-        if ($row['status'] === 'pending') {
-            echo "<button class='btn btn-success btn-sm' onclick='approveVolunteer(" . $row['id'] . ")'>"
-                 . "<i class='fas fa-check'></i> Approve</button> ";
-            echo "<button class='btn btn-danger btn-sm' onclick='openRejectModal(" . $row['id'] . ", \"" 
-                 . htmlspecialchars($row['full_name'], ENT_QUOTES) . "\")'>"
-                 . "<i class='fas fa-times'></i> Reject</button>";
-        } elseif ($row['status'] === 'approved' && $row['hours_served'] == 0) {
-            echo "<button class='btn btn-primary btn-sm' onclick='markAttendance(" . $row['id'] . ", \"" 
-                 . htmlspecialchars($row['full_name'], ENT_QUOTES) . "\")'>"
-                 . "<i class='fas fa-clock'></i> Mark Hours</button>";
+        $status_class = ($row['status'] === 'attended') ? 'attendance-attended' : 'status-approved';
+        
+        echo "<tr>
+                <td>" . htmlspecialchars($row['full_name']) . "</td>
+                <td>
+                    " . htmlspecialchars($row['contact_number']) . "<br>
+                    <small>" . htmlspecialchars($row['email']) . "</small>
+                </td>
+                <td>" . date('M d, Y', strtotime($row['registration_date'])) . "</td>
+                <td><span class='status-badge {$status_class}'>" . ucfirst($row['status']) . "</span></td>
+                <td>";
+        
+        // Only show attendance button for approved status
+        if ($row['status'] === 'approved') {
+            echo "<button class='btn btn-info btn-sm' onclick='markAttendance(" . $row['id'] . ", \"" . htmlspecialchars($row['full_name'], ENT_QUOTES) . "\")'>
+                    <i class='fas fa-check-circle'></i> Attendance
+                  </button>";
         }
+        
         echo "</td></tr>";
     }
-    
+
     echo "</tbody></table></div>";
 } else {
     echo "<div class='empty-state' style='text-align:center; padding:2rem;'>
